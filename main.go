@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -174,6 +177,72 @@ func (a *App) loginHandler(w http.ResponseWriter, r *http.Request) {
 	claims := jwt.MapClaims{"sub": user.ID, "exp": time.Now().Add(24 * time.Hour).Unix(), "type": user.AccountType}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims); tokenString, err := token.SignedString(jwtKey); if err != nil { respondWithError(w, http.StatusInternalServerError, "Gagal membuat token"); return }
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{"token": tokenString, "user": user})
+}
+
+func (a *App) hemoglobinPredictionHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil { 
+		respondWithError(w, http.StatusBadRequest, "Ukuran file terlalu besar")
+		return
+	}
+
+	file, handler, err := r.FormFile("image")
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Gagal membaca file 'image' dari form")
+		return
+	}
+	defer file.Close()
+
+	uploadDir := "./uploads"
+	os.MkdirAll(uploadDir, os.ModePerm)
+
+	tempFileName := fmt.Sprintf("%d-%s", time.Now().UnixNano(), filepath.Base(handler.Filename))
+	tempFilePath := filepath.Join(uploadDir, tempFileName)
+	tempFile, err := os.Create(tempFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Tidak dapat membuat file sementara di server")
+		return
+	}
+	defer tempFile.Close()
+	defer os.Remove(tempFilePath) 
+
+	if _, err := io.Copy(tempFile, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Gagal menyimpan file yang di-upload")
+		return
+	}
+
+	absPath, err := filepath.Abs(tempFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Gagal mendapatkan path absolut file")
+		return
+	}
+
+	cmd := exec.Command("python3", "script/hb_processor.py", absPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Error eksekusi script Python: %s\nOutput Script: %s", err, string(output))
+		respondWithError(w, http.StatusInternalServerError, "Proses AI gagal. Cek log server untuk detail.")
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(output, &result); err != nil {
+		log.Printf("Gagal parsing JSON dari Python: %s\nOutput asli: %s", err, string(output))
+		respondWithError(w, http.StatusInternalServerError, "Format hasil dari AI tidak valid")
+		return
+	}
+
+	serverURL := os.Getenv("PUBLIC_SERVER_URL")
+	if serverURL == "" {
+		serverURL = "http://localhost:8080" 
+	}
+	if relativePath, ok := result["boundedBoxImagePath"].(string); ok {
+		cleanPath, err := filepath.Rel(".", relativePath)
+		if err == nil {
+			result["boundedBoxImageURL"] = serverURL + "/" + filepath.ToSlash(cleanPath)
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, result)
 }
 
 func (a *App) createPatientHandler(w http.ResponseWriter, r *http.Request) {
@@ -688,7 +757,13 @@ func (a *App) getVulnerablePatientsHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *App) initializeRoutes() {
-    a.Router.Use(loggingMiddleware); apiV1 := a.Router.PathPrefix("/api/v1").Subrouter(); apiV1.HandleFunc("/auth/login", a.loginHandler).Methods("POST"); authRoutes := apiV1.PathPrefix("").Subrouter(); authRoutes.Use(a.jwtAuthenticationMiddleware)
+    a.Router.Use(loggingMiddleware); 
+	fs := http.StripPrefix("/processed_images/", http.FileServer(http.Dir("./processed_images")))
+	a.Router.PathPrefix("/processed_images/").Handler(fs)
+	
+	apiV1 := a.Router.PathPrefix("/api/v1").Subrouter(); 
+	apiV1.HandleFunc("/auth/login", a.loginHandler).Methods("POST"); authRoutes := apiV1.PathPrefix("").Subrouter(); authRoutes.Use(a.jwtAuthenticationMiddleware)
+	authRoutes.HandleFunc("/examinations/predict-hb", a.hemoglobinPredictionHandler).Methods("POST")
     authRoutes.HandleFunc("/dashboard", a.getDashboardDataHandler).Methods("GET"); authRoutes.HandleFunc("/patients/vulnerable", a.getVulnerablePatientsHandler).Methods("GET"); authRoutes.HandleFunc("/analysis/intervention", a.analysisHandler).Methods("POST")
     authRoutes.HandleFunc("/patients", a.createPatientHandler).Methods("POST"); authRoutes.HandleFunc("/patients", a.getAllPatientsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{id}", a.updatePatientHandler).Methods("PUT"); authRoutes.HandleFunc("/patients/{id}", a.deletePatientHandler).Methods("DELETE"); authRoutes.HandleFunc("/patients/{patientId}/details", a.getPatientDetailsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{patientId}/examinations/latest", a.getLatestExaminationForMonthHandler).Methods("GET")
     authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")

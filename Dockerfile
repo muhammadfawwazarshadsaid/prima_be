@@ -13,6 +13,18 @@ COPY . .
 # Build binary Go
 RUN go build -o main .
 
+# Install Python dan pip
+RUN apt-get update && apt-get install -y python3 python3-pip
+
+# Copy script dan requirements
+COPY script/ /app/script/
+
+# Install dependensi Python
+RUN pip3 install --no-cache-dir -r /app/script/requirements.txt
+
+# Copy model
+COPY model/ /app/model/
+
 # Stage 2 - Runtime image ringan
 FROM alpine:latest
 WORKDIR /root/
