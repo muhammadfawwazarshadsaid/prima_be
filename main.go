@@ -291,6 +291,106 @@ func (a *App) getPmtItemsHandler(w http.ResponseWriter, r *http.Request) {
     items := []PmtItem{}; for rows.Next() { var item PmtItem; if err := rows.Scan(&item.ID, &item.IconName, &item.Title, &item.Description, &item.StockCount, &item.TargetGroup, &item.SubItemTitle, &item.SubItemDescription); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; items = append(items, item) }; respondWithJSON(w, http.StatusOK, items)
 }
 
+func (a *App) updatePmtStockHandler(w http.ResponseWriter, r *http.Request) {
+    id := mux.Vars(r)["id"]
+    var payload struct {
+        NewStock int `json:"newStock"`
+    }
+
+    if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+        respondWithError(w, http.StatusBadRequest, "Invalid request body")
+        return
+    }
+
+    query := `UPDATE pmt_items SET stock_count = $1 WHERE id = $2`
+    res, err := a.DB.Exec(query, payload.NewStock, id)
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    count, _ := res.RowsAffected()
+    if count == 0 {
+        respondWithError(w, http.StatusNotFound, "PMT item not found")
+        return
+    }
+
+    respondWithJSON(w, http.StatusOK, map[string]string{"message": "Stock updated successfully"})
+}
+
+func (a *App) recordPmtDistributionHandler(w http.ResponseWriter, r *http.Request) {
+    var payload struct {
+        ItemName      string         `json:"itemName"`
+        Distributions map[string]int `json:"distributions"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+        respondWithError(w, http.StatusBadRequest, "Invalid request body")
+        return
+    }
+
+    tx, err := a.DB.Begin()
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, "Failed to start transaction")
+        return
+    }
+    defer tx.Rollback() 
+
+    totalDistributed := 0
+    for _, qty := range payload.Distributions {
+        totalDistributed += qty
+    }
+
+    _, err = tx.Exec(`UPDATE pmt_items SET stock_count = stock_count - $1 WHERE title = $2`, totalDistributed, payload.ItemName)
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, "Failed to update item stock: "+err.Error())
+        return
+    }
+
+    for patientName, quantity := range payload.Distributions {
+        var patientID string
+        err := tx.QueryRow(`SELECT id FROM patients WHERE full_name = $1`, patientName).Scan(&patientID)
+        if err != nil {
+            log.Printf("Warning: Patient '%s' not found, skipping PMT history record.", patientName)
+            continue 
+        }
+
+        var latestRecordID string
+        var existingHistory sql.NullString
+        err = tx.QueryRow(`SELECT id, pmt_history FROM examination_records WHERE patient_id = $1 ORDER BY examination_date DESC LIMIT 1`, patientID).Scan(&latestRecordID, &existingHistory)
+        if err != nil {
+             log.Printf("Warning: No examination record found for patient '%s', skipping PMT history.", patientName)
+            continue
+        }
+
+        var history []map[string]interface{}
+        if existingHistory.Valid && existingHistory.String != "null" {
+            json.Unmarshal([]byte(existingHistory.String), &history)
+        }
+
+        newRecord := map[string]interface{}{
+            "itemName":  payload.ItemName,
+            "quantity":  quantity,
+            "dateGiven": time.Now().UTC().Format(time.RFC3339),
+        }
+        history = append(history, newRecord)
+        
+        newHistoryJSON, _ := json.Marshal(history)
+
+        _, err = tx.Exec(`UPDATE examination_records SET pmt_history = $1 WHERE id = $2`, newHistoryJSON, latestRecordID)
+        if err != nil {
+            respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update PMT history for %s: %v", patientName, err))
+            return
+        }
+    }
+    
+    if err := tx.Commit(); err != nil {
+        respondWithError(w, http.StatusInternalServerError, "Failed to commit transaction")
+        return
+    }
+
+    respondWithJSON(w, http.StatusCreated, map[string]string{"message": "Distribution recorded successfully"})
+}
+
 func (a *App) getDashboardDataHandler(w http.ResponseWriter, r *http.Request) {
     rows, err := a.DB.Query(getFullExaminationRecordQuery("lr.rn = 1", "")); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
     allLatestRecords := scanFullExaminationRecords(rows); highRiskChildren, highRiskMothers, highRiskAdolescents := 0, 0, 0
@@ -466,6 +566,8 @@ func (a *App) initializeRoutes() {
     authRoutes.HandleFunc("/patients", a.createPatientHandler).Methods("POST"); authRoutes.HandleFunc("/patients", a.getAllPatientsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{id}", a.updatePatientHandler).Methods("PUT"); authRoutes.HandleFunc("/patients/{id}", a.deletePatientHandler).Methods("DELETE"); authRoutes.HandleFunc("/patients/{patientId}/details", a.getPatientDetailsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{patientId}/examinations/latest", a.getLatestExaminationForMonthHandler).Methods("GET")
     authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")
     authRoutes.HandleFunc("/pmt/items", a.getPmtItemsHandler).Methods("GET"); authRoutes.HandleFunc("/pmt/items", a.createPmtItemHandler).Methods("POST"); authRoutes.HandleFunc("/pmt/items/{id}", a.updatePmtItemHandler).Methods("PUT"); authRoutes.HandleFunc("/pmt/items/{id}", a.deletePmtItemHandler).Methods("DELETE")
+	authRoutes.HandleFunc("/pmt/items/{id}/stock", a.updatePmtStockHandler).Methods("PUT")
+	authRoutes.HandleFunc("/pmt/distribution", a.recordPmtDistributionHandler).Methods("POST")
     authRoutes.HandleFunc("/attendance", a.createOrUpdateAttendanceHandler).Methods("POST"); authRoutes.HandleFunc("/attendance/today", a.getTodaysAttendanceHandler).Methods("GET"); authRoutes.HandleFunc("/attendance", a.getAttendanceRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/attendance", a.deleteAttendanceRecordHandler).Methods("DELETE")
     a.Router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { respondWithJSON(w, http.StatusOK, map[string]string{"status": "Prima API Aktif ✅"}) })
 }
