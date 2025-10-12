@@ -45,14 +45,12 @@ func (a *App) Initialize() {
 	err := godotenv.Load()
 	if err != nil { log.Println("Perhatian: Tidak dapat memuat file .env.") }
 	connStr := os.Getenv("DATABASE_URL")
-	if connStr == "" { connStr = "postgres://prima_db:prima_db@16.176.219.213:5432/prima_db?sslmode=disable" }
+	if connStr == "" { connStr = "postgres://prima_db:prima_db@db:5432/prima_db?sslmode=disable" }
 
 	for i := 0; i < 5; i++ {
 		a.DB, err = sql.Open("postgres", connStr)
 		if err == nil {
-			if err = a.DB.Ping(); err == nil {
-				break
-			}
+			if err = a.DB.Ping(); err == nil { break }
 		}
 		log.Println("Gagal terhubung ke database, mencoba lagi dalam 2 detik...")
 		time.Sleep(2 * time.Second)
@@ -288,19 +286,19 @@ func (a *App) updateExaminationRecordHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (a *App) getPmtItemsHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.DB.Query("SELECT id, icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description FROM pmt_items"); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
-	items := []PmtItem{}; for rows.Next() { var item PmtItem; if err := rows.Scan(&item.ID, &item.IconName, &item.Title, &item.Description, &item.StockCount, &item.TargetGroup, &item.SubItemTitle, &item.SubItemDescription); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; items = append(items, item) }; respondWithJSON(w, http.StatusOK, items)
+    rows, err := a.DB.Query("SELECT id, icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description FROM pmt_items"); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
+    items := []PmtItem{}; for rows.Next() { var item PmtItem; if err := rows.Scan(&item.ID, &item.IconName, &item.Title, &item.Description, &item.StockCount, &item.TargetGroup, &item.SubItemTitle, &item.SubItemDescription); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; items = append(items, item) }; respondWithJSON(w, http.StatusOK, items)
 }
 
 func (a *App) getDashboardDataHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.DB.Query(getFullExaminationRecordQuery("lr.rn = 1", "")); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
-	allLatestRecords := scanFullExaminationRecords(rows); highRiskChildren, highRiskMothers, highRiskAdolescents := 0, 0, 0
-	for _, rec := range allLatestRecords { rec.ExaminationRecord.PatientType = rec.PersonalData.PatientType; if rec.CalculateRiskLevel() == RiskHigh { switch rec.PersonalData.PatientType { case "child": highRiskChildren++; case "pregnantWoman": highRiskMothers++; case "adolescentGirl": highRiskAdolescents++ } } }
-	chartData, err := a.getChartData(); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }
-	response := map[string]interface{}{
-		"riskSummary": map[string]string{ "childRisk": fmt.Sprintf("%d Children at risk of Stunting & Anemia", highRiskChildren), "pregnantRisk":   fmt.Sprintf("%d Mothers at risk of High LBW", highRiskMothers), "adolescentRisk": fmt.Sprintf("%d Adolescents at risk of Anemia", highRiskAdolescents), },
-		"chartData": chartData,
-	}; respondWithJSON(w, http.StatusOK, response)
+    rows, err := a.DB.Query(getFullExaminationRecordQuery("lr.rn = 1", "")); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
+    allLatestRecords := scanFullExaminationRecords(rows); highRiskChildren, highRiskMothers, highRiskAdolescents := 0, 0, 0
+    for _, rec := range allLatestRecords { rec.ExaminationRecord.PatientType = rec.PersonalData.PatientType; if rec.CalculateRiskLevel() == RiskHigh { switch rec.PersonalData.PatientType { case "child": highRiskChildren++; case "pregnantWoman": highRiskMothers++; case "adolescentGirl": highRiskAdolescents++ } } }
+    chartData, err := a.getChartData(); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }
+    response := map[string]interface{}{
+        "riskSummary": map[string]string{ "childRisk": fmt.Sprintf("%d Children at risk of Stunting & Anemia", highRiskChildren), "pregnantRisk":   fmt.Sprintf("%d Mothers at risk of High LBW", highRiskMothers), "adolescentRisk": fmt.Sprintf("%d Adolescents at risk of Anemia", highRiskAdolescents), },
+        "chartData": chartData,
+    }; respondWithJSON(w, http.StatusOK, response)
 }
 
 func (a *App) getChartData() (map[string]interface{}, error) {
@@ -311,7 +309,12 @@ func (a *App) getChartData() (map[string]interface{}, error) {
     stats := make(map[string]map[time.Time]monthlyStat)
     for rows.Next() {
         var rec ExaminationRecord; var month time.Time
-        if err := rows.Scan(&rec.PatientType, &month, &rec.Lila, &rec.TbUZscore, &rec.IsBbStagnan, &rec.IsTtdRutin, &rec.Imt, &rec.HemoglobinResult); err != nil { return nil, err }
+        var lila, tbuz, imt sql.NullFloat64; var stagnan, ttdrutin sql.NullBool; var hemoglobin sql.NullString
+        if err := rows.Scan(&rec.PatientType, &month, &lila, &tbuz, &stagnan, &ttdrutin, &imt, &hemoglobin); err != nil { return nil, err }
+        if lila.Valid { rec.Lila = &lila.Float64 }; if tbuz.Valid { rec.TbUZscore = &tbuz.Float64 }; if imt.Valid { rec.Imt = &imt.Float64 }
+        if stagnan.Valid { rec.IsBbStagnan = &stagnan.Bool }; if ttdrutin.Valid { rec.IsTtdRutin = &ttdrutin.Bool }
+        if hemoglobin.Valid { rec.HemoglobinResult = json.RawMessage(hemoglobin.String) }
+
         if _, ok := stats[rec.PatientType]; !ok { stats[rec.PatientType] = make(map[time.Time]monthlyStat) }
         stat := stats[rec.PatientType][month]
         risk := rec.CalculateRiskLevel()
@@ -338,38 +341,38 @@ func (a *App) getChartData() (map[string]interface{}, error) {
 }
 
 func (a *App) getTodaysAttendanceHandler(w http.ResponseWriter, r *http.Request) {
-	today := time.Now().Format("2006-01-02"); query := `SELECT p.full_name, p.patient_type, a.status FROM attendance a JOIN patients p ON a.patient_id = p.id WHERE a.date = $1`; rows, err := a.DB.Query(query, today)
-	if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close(); records := []AttendanceRecord{}
-	for rows.Next() { var rec AttendanceRecord; if err := rows.Scan(&rec.Name, &rec.PatientType, &rec.Status); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; records = append(records, rec) }; respondWithJSON(w, http.StatusOK, records)
+    today := time.Now().Format("2006-01-02"); query := `SELECT p.full_name, p.patient_type, a.status FROM attendance a JOIN patients p ON a.patient_id = p.id WHERE a.date = $1`; rows, err := a.DB.Query(query, today)
+    if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close(); records := []AttendanceRecord{}
+    for rows.Next() { var rec AttendanceRecord; if err := rows.Scan(&rec.Name, &rec.PatientType, &rec.Status); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; records = append(records, rec) }; respondWithJSON(w, http.StatusOK, records)
 }
 
 func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request) {
     date := r.URL.Query().Get("date"); category := r.URL.Query().Get("category"); rows, err := a.DB.Query(`SELECT p.full_name, p.patient_type, a.status FROM attendance a JOIN patients p ON a.patient_id = p.id WHERE a.date = $1 AND p.patient_type = $2`, date, category)
     if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close(); records := []AttendanceRecord{}
-	for rows.Next() { var rec AttendanceRecord; if err := rows.Scan(&rec.Name, &rec.PatientType, &rec.Status); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; records = append(records, rec) }; respondWithJSON(w, http.StatusOK, records)
+    for rows.Next() { var rec AttendanceRecord; if err := rows.Scan(&rec.Name, &rec.PatientType, &rec.Status); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; records = append(records, rec) }; respondWithJSON(w, http.StatusOK, records)
 }
 
 func generateInterventionAnalysis(rec FullExaminationRecord) string {
-	var hbResult HemoglobinResult
-	if len(rec.HemoglobinResult) > 0 && rec.HemoglobinResult[0] != 'n' { json.Unmarshal(rec.HemoglobinResult, &hbResult) }
-	name := rec.PersonalData.FullName
-	switch rec.PersonalData.PatientType {
-	case "child":
-		tbU := "N/A"; if rec.TbUZscore != nil { tbU = fmt.Sprintf("%.1f", *rec.TbUZscore) }; hb := "N/A"; if hbResult.AverageHb != 0 { hb = fmt.Sprintf("%.1f", hbResult.AverageHb) }
-		return fmt.Sprintf("Pasien ini, %s, menunjukkan tanda-tanda darurat gizi yaitu stunting berat (TB/U: %s) dan kemungkinan anemia (Hb: %s), yang sangat berisiko menghambat pertumbuhan dan perkembangan kognitifnya. Prioritas utama kader adalah segera memberikan rujukan ke Puskesmas untuk penanganan medis. Sambil menunggu, jadwalkan kunjungan rumah untuk mengedukasi ibu tentang pentingnya MPASI kaya zat besi seperti hati ayam.", name, tbU, hb)
-	case "pregnantWoman":
-		lila := "N/A"; if rec.Lila != nil { lila = fmt.Sprintf("%.1f", *rec.Lila) }
-		return fmt.Sprintf("Ibu %s teridentifikasi memiliki risiko tinggi Kekurangan Energi Kronis (KEK) berdasarkan ukuran LiLA (%s cm) dan kenaikan berat badan yang stagnan. Kondisi ini dapat berdampak pada berat badan lahir rendah (BBLR) pada bayi. Intervensi paling mendesak adalah memberikan PMT Pemulihan khusus untuk ibu hamil dan melakukan kunjungan rumah untuk konseling gizi intensif.", name, lila)
-	case "adolescentGirl":
-		imt := "N/A"; if rec.Imt != nil { imt = fmt.Sprintf("%.1f", *rec.Imt) }
-		return fmt.Sprintf("Remaja putri %s menunjukkan status gizi sangat kurus (IMT: %s) dan kemungkinan mengalami anemia ringan. Kondisi ini perlu segera ditangani untuk mencegah masalah kesehatan jangka panjang. Rekomendasi utama adalah memberikan edukasi gizi seimbang dan memastikan kepatuhan konsumsi TTD mingguan.", name, imt)
-	}
-	return fmt.Sprintf("Analisis umum untuk %s: Mohon periksa data untuk rekomendasi lebih lanjut.", name)
+    var hbResult HemoglobinResult
+    if len(rec.HemoglobinResult) > 0 && rec.HemoglobinResult[0] != 'n' { json.Unmarshal(rec.HemoglobinResult, &hbResult) }
+    name := rec.PersonalData.FullName
+    switch rec.PersonalData.PatientType {
+    case "child":
+        tbU := "N/A"; if rec.TbUZscore != nil { tbU = fmt.Sprintf("%.1f", *rec.TbUZscore) }; hb := "N/A"; if hbResult.AverageHb != 0 { hb = fmt.Sprintf("%.1f", hbResult.AverageHb) }
+        return fmt.Sprintf("Pasien ini, %s, menunjukkan tanda-tanda darurat gizi yaitu stunting berat (TB/U: %s) dan kemungkinan anemia (Hb: %s), yang sangat berisiko menghambat pertumbuhan dan perkembangan kognitifnya. Prioritas utama kader adalah segera memberikan rujukan ke Puskesmas untuk penanganan medis. Sambil menunggu, jadwalkan kunjungan rumah untuk mengedukasi ibu tentang pentingnya MPASI kaya zat besi seperti hati ayam.", name, tbU, hb)
+    case "pregnantWoman":
+        lila := "N/A"; if rec.Lila != nil { lila = fmt.Sprintf("%.1f", *rec.Lila) }
+        return fmt.Sprintf("Ibu %s teridentifikasi memiliki risiko tinggi Kekurangan Energi Kronis (KEK) berdasarkan ukuran LiLA (%s cm) dan kenaikan berat badan yang stagnan. Kondisi ini dapat berdampak pada berat badan lahir rendah (BBLR) pada bayi. Intervensi paling mendesak adalah memberikan PMT Pemulihan khusus untuk ibu hamil dan melakukan kunjungan rumah untuk konseling gizi intensif.", name, lila)
+    case "adolescentGirl":
+        imt := "N/A"; if rec.Imt != nil { imt = fmt.Sprintf("%.1f", *rec.Imt) }
+        return fmt.Sprintf("Remaja putri %s menunjukkan status gizi sangat kurus (IMT: %s) dan kemungkinan mengalami anemia ringan. Kondisi ini perlu segera ditangani untuk mencegah masalah kesehatan jangka panjang. Rekomendasi utama adalah memberikan edukasi gizi seimbang dan memastikan kepatuhan konsumsi TTD mingguan.", name, imt)
+    }
+    return fmt.Sprintf("Analisis umum untuk %s: Mohon periksa data untuk rekomendasi lebih lanjut.", name)
 }
 
 func (a *App) analysisHandler(w http.ResponseWriter, r *http.Request) {
-	var rec FullExaminationRecord; if err := json.NewDecoder(r.Body).Decode(&rec); err != nil { respondWithError(w, http.StatusBadRequest, "Invalid request payload"); return }
-	analysisText := generateInterventionAnalysis(rec); respondWithJSON(w, http.StatusOK, map[string]string{"analysisText": analysisText})
+    var rec FullExaminationRecord; if err := json.NewDecoder(r.Body).Decode(&rec); err != nil { respondWithError(w, http.StatusBadRequest, "Invalid request payload"); return }
+    analysisText := generateInterventionAnalysis(rec); respondWithJSON(w, http.StatusOK, map[string]string{"analysisText": analysisText})
 }
 
 func (a *App) getVulnerablePatientsHandler(w http.ResponseWriter, r *http.Request) {
@@ -380,25 +383,25 @@ func (a *App) getVulnerablePatientsHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *App) initializeRoutes() {
-	a.Router.Use(loggingMiddleware); apiV1 := a.Router.PathPrefix("/api/v1").Subrouter(); apiV1.HandleFunc("/auth/login", a.loginHandler).Methods("POST"); authRoutes := apiV1.PathPrefix("").Subrouter(); authRoutes.Use(a.jwtAuthenticationMiddleware)
-	authRoutes.HandleFunc("/dashboard", a.getDashboardDataHandler).Methods("GET"); authRoutes.HandleFunc("/patients/vulnerable", a.getVulnerablePatientsHandler).Methods("GET"); authRoutes.HandleFunc("/analysis/intervention", a.analysisHandler).Methods("POST")
-	authRoutes.HandleFunc("/patients", a.createPatientHandler).Methods("POST"); authRoutes.HandleFunc("/patients", a.getAllPatientsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{id}", a.updatePatientHandler).Methods("PUT"); authRoutes.HandleFunc("/patients/{id}", a.deletePatientHandler).Methods("DELETE"); authRoutes.HandleFunc("/patients/{patientId}/details", a.getPatientDetailsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{patientId}/examinations/latest", a.getLatestExaminationForMonthHandler).Methods("GET")
-	authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")
-	authRoutes.HandleFunc("/pmt/items", a.getPmtItemsHandler).Methods("GET"); authRoutes.HandleFunc("/pmt/items", a.createPmtItemHandler).Methods("POST"); authRoutes.HandleFunc("/pmt/items/{id}", a.updatePmtItemHandler).Methods("PUT"); authRoutes.HandleFunc("/pmt/items/{id}", a.deletePmtItemHandler).Methods("DELETE")
-	authRoutes.HandleFunc("/attendance", a.createOrUpdateAttendanceHandler).Methods("POST"); authRoutes.HandleFunc("/attendance/today", a.getTodaysAttendanceHandler).Methods("GET"); authRoutes.HandleFunc("/attendance", a.getAttendanceRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/attendance", a.deleteAttendanceRecordHandler).Methods("DELETE")
-	a.Router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { respondWithJSON(w, http.StatusOK, map[string]string{"status": "Prima API Aktif ✅"}) })
+    a.Router.Use(loggingMiddleware); apiV1 := a.Router.PathPrefix("/api/v1").Subrouter(); apiV1.HandleFunc("/auth/login", a.loginHandler).Methods("POST"); authRoutes := apiV1.PathPrefix("").Subrouter(); authRoutes.Use(a.jwtAuthenticationMiddleware)
+    authRoutes.HandleFunc("/dashboard", a.getDashboardDataHandler).Methods("GET"); authRoutes.HandleFunc("/patients/vulnerable", a.getVulnerablePatientsHandler).Methods("GET"); authRoutes.HandleFunc("/analysis/intervention", a.analysisHandler).Methods("POST")
+    authRoutes.HandleFunc("/patients", a.createPatientHandler).Methods("POST"); authRoutes.HandleFunc("/patients", a.getAllPatientsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{id}", a.updatePatientHandler).Methods("PUT"); authRoutes.HandleFunc("/patients/{id}", a.deletePatientHandler).Methods("DELETE"); authRoutes.HandleFunc("/patients/{patientId}/details", a.getPatientDetailsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{patientId}/examinations/latest", a.getLatestExaminationForMonthHandler).Methods("GET")
+    authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")
+    authRoutes.HandleFunc("/pmt/items", a.getPmtItemsHandler).Methods("GET"); authRoutes.HandleFunc("/pmt/items", a.createPmtItemHandler).Methods("POST"); authRoutes.HandleFunc("/pmt/items/{id}", a.updatePmtItemHandler).Methods("PUT"); authRoutes.HandleFunc("/pmt/items/{id}", a.deletePmtItemHandler).Methods("DELETE")
+    authRoutes.HandleFunc("/attendance", a.createOrUpdateAttendanceHandler).Methods("POST"); authRoutes.HandleFunc("/attendance/today", a.getTodaysAttendanceHandler).Methods("GET"); authRoutes.HandleFunc("/attendance", a.getAttendanceRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/attendance", a.deleteAttendanceRecordHandler).Methods("DELETE")
+    a.Router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { respondWithJSON(w, http.StatusOK, map[string]string{"status": "Prima API Aktif ✅"}) })
 }
 
 func loggingMiddleware(next http.Handler) http.Handler { return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { log.Printf("Request: %s %s", r.Method, r.URL.Path); next.ServeHTTP(w, r) }) }
 func (a *App) jwtAuthenticationMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization"); if authHeader == "" { respondWithError(w, http.StatusUnauthorized, "Authorization header required"); return }
-		tokenString := strings.TrimPrefix(authHeader, "Bearer "); if tokenString == authHeader { respondWithError(w, http.StatusUnauthorized, "Invalid token format"); return }
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) { if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok { return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"]) }; return jwtKey, nil })
-		if err != nil || !token.Valid { respondWithError(w, http.StatusUnauthorized, "Invalid token"); return }
-		claims, ok := token.Claims.(jwt.MapClaims); if !ok || !token.Valid { respondWithError(w, http.StatusUnauthorized, "Invalid token claims"); return }
-		user := AuthenticatedUser{ID: claims["sub"].(string), Type: claims["type"].(string)}; ctx := context.WithValue(r.Context(), userContextKey, user); next.ServeHTTP(w, r.WithContext(ctx))
-	})
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        authHeader := r.Header.Get("Authorization"); if authHeader == "" { respondWithError(w, http.StatusUnauthorized, "Authorization header required"); return }
+        tokenString := strings.TrimPrefix(authHeader, "Bearer "); if tokenString == authHeader { respondWithError(w, http.StatusUnauthorized, "Invalid token format"); return }
+        token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) { if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok { return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"]) }; return jwtKey, nil })
+        if err != nil || !token.Valid { respondWithError(w, http.StatusUnauthorized, "Invalid token"); return }
+        claims, ok := token.Claims.(jwt.MapClaims); if !ok || !token.Valid { respondWithError(w, http.StatusUnauthorized, "Invalid token claims"); return }
+        user := AuthenticatedUser{ID: claims["sub"].(string), Type: claims["type"].(string)}; ctx := context.WithValue(r.Context(), userContextKey, user); next.ServeHTTP(w, r.WithContext(ctx))
+    })
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) { response, _ := json.Marshal(payload); w.Header().Set("Content-Type", "application/json"); w.WriteHeader(code); w.Write(response) }
@@ -414,139 +417,91 @@ func scanFullExaminationRecords(rows *sql.Rows) []FullExaminationRecord {
     for rows.Next() {
         var rec FullExaminationRecord
         var weightHistory, heightHistory, nutrientHistory, denverMilestones, hemoglobinResult, pmtHistory sql.NullString
-
-        err := rows.Scan(
-            &rec.ID, &rec.PersonalData.ID, &rec.PersonalData.FullName, &rec.PersonalData.DateOfBirth, 
-            &rec.PersonalData.MotherName, &rec.PersonalData.MotherPhone, 
-            &weightHistory, &heightHistory, &nutrientHistory, &denverMilestones, 
-            &rec.Age, &rec.PersonalData.PatientType, &rec.ExaminationDate, 
-            &rec.TB, &rec.BB, &rec.Lila, &rec.TbUZscore, &rec.BbUZscore, &rec.Imt, 
-            &rec.IsTtdRutin, &rec.BbGainPerMonth, &rec.IsBbStagnan, 
-            &hemoglobinResult, &pmtHistory,
-        )
-        if err != nil { 
-            log.Printf("Error scanning record: %v", err)
-            return nil 
-        }
+        err := rows.Scan(&rec.ID, &rec.PersonalData.ID, &rec.PersonalData.FullName, &rec.PersonalData.DateOfBirth, &rec.PersonalData.MotherName, &rec.PersonalData.MotherPhone, &weightHistory, &heightHistory, &nutrientHistory, &denverMilestones, &rec.Age, &rec.PersonalData.PatientType, &rec.ExaminationDate, &rec.TB, &rec.BB, &rec.Lila, &rec.TbUZscore, &rec.BbUZscore, &rec.Imt, &rec.IsTtdRutin, &rec.BbGainPerMonth, &rec.IsBbStagnan, &hemoglobinResult, &pmtHistory)
+        if err != nil { log.Printf("Error scanning record: %v", err); return nil }
         if weightHistory.Valid { rec.WeightHistory = []byte(weightHistory.String) }
         if heightHistory.Valid { rec.HeightHistory = []byte(heightHistory.String) }
         if nutrientHistory.Valid { rec.NutrientHistory = []byte(nutrientHistory.String) }
         if denverMilestones.Valid { rec.DenverMilestones = []byte(denverMilestones.String) }
         if hemoglobinResult.Valid { rec.HemoglobinResult = []byte(hemoglobinResult.String) }
         if pmtHistory.Valid { rec.PmtHistory = []byte(pmtHistory.String) }
-
-        rec.PatientID = rec.PersonalData.ID
-        rec.PatientType = rec.PersonalData.PatientType
-        records = append(records, rec)
+        rec.PatientID = rec.PersonalData.ID; rec.PatientType = rec.PersonalData.PatientType; records = append(records, rec)
     }
     return records
 }
 
 func createTables(db *sql.DB) {
-	fmt.Println("Memulai migrasi database..."); enumQueries := `DO $$ BEGIN CREATE TYPE account_type AS ENUM ('kader', 'patient'); EXCEPTION WHEN duplicate_object THEN null; END $$; DO $$ BEGIN CREATE TYPE patient_type AS ENUM ('child', 'pregnantWoman', 'adolescentGirl'); EXCEPTION WHEN duplicate_object THEN null; END $$; DO $$ BEGIN CREATE TYPE attendance_status AS ENUM ('Present', 'Absent', 'Waiting'); EXCEPTION WHEN duplicate_object THEN null; END $$;`
-	if _, err := db.Exec(enumQueries); err != nil { log.Fatalf("Gagal membuat tipe ENUM: %v", err) }
-	tableQueries := `CREATE TABLE IF NOT EXISTS posyandu (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, address VARCHAR(255)); CREATE TABLE IF NOT EXISTS users (id VARCHAR(10) PRIMARY KEY, name VARCHAR(100) NOT NULL, username VARCHAR(50) UNIQUE NOT NULL, password_hash VARCHAR(100) NOT NULL, account_type account_type NOT NULL, patient_type patient_type, posyandu_id INTEGER REFERENCES posyandu(id)); CREATE TABLE IF NOT EXISTS patients (id VARCHAR(10) PRIMARY KEY, full_name VARCHAR(100) NOT NULL, date_of_birth DATE NOT NULL, mother_name VARCHAR(100), mother_phone VARCHAR(20), patient_type patient_type NOT NULL); CREATE TABLE IF NOT EXISTS examination_records (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), patient_id VARCHAR(10) REFERENCES patients(id) ON DELETE CASCADE NOT NULL, age VARCHAR(50), examination_date TIMESTAMPTZ NOT NULL, tb NUMERIC(5, 2), bb NUMERIC(5, 2), lila NUMERIC(5, 2), tbu_zscore NUMERIC(5, 2), bbu_zscore NUMERIC(5, 2), imt NUMERIC(5, 2), is_ttd_rutin BOOLEAN, bb_gain_per_month NUMERIC(5, 2), is_bb_stagnan BOOLEAN, weight_history JSONB, height_history JSONB, nutrient_history JSONB, denver_milestones JSONB, hemoglobin_result JSONB, pmt_history JSONB, created_at TIMESTAMPTZ DEFAULT NOW()); CREATE TABLE IF NOT EXISTS pmt_items (id SERIAL PRIMARY KEY, icon_name VARCHAR(50), title VARCHAR(100) UNIQUE NOT NULL, description TEXT, stock_count INTEGER DEFAULT 0, target_group patient_type, sub_item_title VARCHAR(100), sub_item_description TEXT); CREATE TABLE IF NOT EXISTS attendance (id SERIAL PRIMARY KEY, patient_id VARCHAR(10) REFERENCES patients(id) ON DELETE CASCADE NOT NULL, date DATE NOT NULL, status attendance_status NOT NULL, UNIQUE(patient_id, date));`
-	if _, err := db.Exec(tableQueries); err != nil { log.Fatalf("Gagal membuat tabel: %v", err) }; fmt.Println("Migrasi database selesai.")
+    fmt.Println("Memulai migrasi database..."); enumQueries := `DO $$ BEGIN CREATE TYPE account_type AS ENUM ('kader', 'patient'); EXCEPTION WHEN duplicate_object THEN null; END $$; DO $$ BEGIN CREATE TYPE patient_type AS ENUM ('child', 'pregnantWoman', 'adolescentGirl'); EXCEPTION WHEN duplicate_object THEN null; END $$; DO $$ BEGIN CREATE TYPE attendance_status AS ENUM ('Present', 'Absent', 'Waiting'); EXCEPTION WHEN duplicate_object THEN null; END $$;`
+    if _, err := db.Exec(enumQueries); err != nil { log.Fatalf("Gagal membuat tipe ENUM: %v", err) }
+    tableQueries := `CREATE TABLE IF NOT EXISTS posyandu (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, address VARCHAR(255)); CREATE TABLE IF NOT EXISTS users (id VARCHAR(10) PRIMARY KEY, name VARCHAR(100) NOT NULL, username VARCHAR(50) UNIQUE NOT NULL, password_hash VARCHAR(100) NOT NULL, account_type account_type NOT NULL, patient_type patient_type, posyandu_id INTEGER REFERENCES posyandu(id)); CREATE TABLE IF NOT EXISTS patients (id VARCHAR(10) PRIMARY KEY, full_name VARCHAR(100) NOT NULL, date_of_birth DATE NOT NULL, mother_name VARCHAR(100), mother_phone VARCHAR(20), patient_type patient_type NOT NULL); CREATE TABLE IF NOT EXISTS examination_records (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), patient_id VARCHAR(10) REFERENCES patients(id) ON DELETE CASCADE NOT NULL, age VARCHAR(50), examination_date TIMESTAMPTZ NOT NULL, tb NUMERIC(5, 2), bb NUMERIC(5, 2), lila NUMERIC(5, 2), tbu_zscore NUMERIC(5, 2), bbu_zscore NUMERIC(5, 2), imt NUMERIC(5, 2), is_ttd_rutin BOOLEAN, bb_gain_per_month NUMERIC(5, 2), is_bb_stagnan BOOLEAN, weight_history JSONB, height_history JSONB, nutrient_history JSONB, denver_milestones JSONB, hemoglobin_result JSONB, pmt_history JSONB, created_at TIMESTAMPTZ DEFAULT NOW()); CREATE TABLE IF NOT EXISTS pmt_items (id SERIAL PRIMARY KEY, icon_name VARCHAR(50), title VARCHAR(100) UNIQUE NOT NULL, description TEXT, stock_count INTEGER DEFAULT 0, target_group patient_type, sub_item_title VARCHAR(100), sub_item_description TEXT); CREATE TABLE IF NOT EXISTS attendance (id SERIAL PRIMARY KEY, patient_id VARCHAR(10) REFERENCES patients(id) ON DELETE CASCADE NOT NULL, date DATE NOT NULL, status attendance_status NOT NULL, UNIQUE(patient_id, date));`
+    if _, err := db.Exec(tableQueries); err != nil { log.Fatalf("Gagal membuat tabel: %v", err) }; fmt.Println("Migrasi database selesai.")
 }
 
 func seedData(db *sql.DB) {
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
-	if count > 0 {
-		fmt.Println("Data dummy sudah ada, seeding dilewati.")
-		return
-	}
-	fmt.Println("Memulai proses seeding data dummy...")
-	tx, err := db.Begin()
-	if err != nil {
-		log.Fatal("Gagal memulai transaksi: ", err)
-	}
-
-	var posyanduID int
-	err = tx.QueryRow(`INSERT INTO posyandu (name, address) VALUES ($1, $2) RETURNING id`, "Posyandu Sehat Ceria", "Jl. Mawar No. 12, Jawa Barat").Scan(&posyanduID)
-	if err != nil {
-		tx.Rollback()
-		log.Fatal(err)
-	}
-
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost)
-	_, err = tx.Exec(`INSERT INTO users (id, name, username, password_hash, account_type, posyandu_id) VALUES ($1, $2, $3, $4, $5, $6)`, "KDR001", "Anisa (Bidan)", "kader", string(hashedPassword), "kader", posyanduID)
-	if err != nil {
-		tx.Rollback()
-		log.Fatal(err)
-	}
-
-	_, err = tx.Exec(`INSERT INTO patients (id, full_name, date_of_birth, mother_name, mother_phone, patient_type) VALUES 
-		('NS001', 'Naufal Sabitululum', '2025-05-01', 'Siti Rahma', '081234567890', 'child'), 
-		('AK002', 'Adinda Kirana', '2025-01-10', 'Dewi Lestari', '089876543210', 'child'), 
-		('BS003', 'Budi Santoso', '2024-08-05', 'Rina Wati', '081122334455', 'child'), 
-		('SA004', 'Siti Aisyah', '1998-04-20', 'Siti Aisyah', '082233445566', 'pregnantWoman'), 
-		('RS005', 'Riana Sari', '1997-07-15', 'Riana Sari', '083344556677', 'pregnantWoman'), 
-		('DA008', 'Dewi Anggraini', '1996-11-12', 'Dewi Anggraini', '081298765432', 'pregnantWoman'), 
-		('PA006', 'Putri Ayu', '2010-01-30', 'Lina Marlina', '085566778899', 'adolescentGirl'), 
-		('SA007', 'Siti Aminah', '2009-05-22', 'Nur Hasanah', '087788990011', 'adolescentGirl');
-	`)
-	if err != nil {
-		tx.Rollback()
-		log.Fatal("Gagal seed patients: ", err)
-	}
-
-	whJSON_NS001 := `[{"recordedAtAgeMonth": 3, "value": 6.0}, {"recordedAtAgeMonth": 4, "value": 6.7}, {"recordedAtAgeMonth": 5, "value": 7.2}]`
-	hhJSON_NS001 := `[{"recordedAtAgeMonth": 3, "value": 61}, {"recordedAtAgeMonth": 4, "value": 64}, {"recordedAtAgeMonth": 5, "value": 66}]`
-	hbJSON_NS001 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 9.8}], "conjunctivaResults": [], "averageHb": 9.8, "indication": "Anemia Berat", "confidenceLevel": 98.0, "nailBedIndication": "Anemia Berat"}`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, bbu_zscore, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('NS001', '5 Bulan', '2025-10-05', 7.2, 66, 11.2, -2.5, -3.1, $1, $2, $3);`, whJSON_NS001, hhJSON_NS001, hbJSON_NS001); if err != nil { tx.Rollback(); log.Fatal(err) }
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, hemoglobin_result) VALUES ('NS001', '4 Bulan', '2025-09-05', 6.7, 64, 11.0, '{"averageHb": 10.1, "indication": "Anemia Sedang"}'), ('NS001', '3 Bulan', '2025-08-05', 6.0, 61, 10.8, null);`); if err != nil { tx.Rollback(); log.Fatal(err) }
-
-	hbJSON_AK002 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.92, "hbValue": 11.2}], "conjunctivaResults": [{"objectType": "conjunctiva", "confidence": 0.90, "hbValue": 11.4}], "averageHb": 11.3, "indication": "Normal", "confidenceLevel": 91.0}`
-	whJSON_AK002 := `[{"recordedAtAgeMonth": 7, "value": 7.8}, {"recordedAtAgeMonth": 8, "value": 8.2}, {"recordedAtAgeMonth": 9, "value": 8.5}]`
-	hhJSON_AK002 := `[{"recordedAtAgeMonth": 7, "value": 68}, {"recordedAtAgeMonth": 8, "value": 70}, {"recordedAtAgeMonth": 9, "value": 72}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('AK002', '9 Bulan', '2025-10-11', 8.5, 72, 12.5, -1.8, $1, $2, $3);`, whJSON_AK002, hhJSON_AK002, hbJSON_AK002); if err != nil { tx.Rollback(); log.Fatal(err) }
-	
-	whJSON_BS003 := `[{"recordedAtAgeMonth": 12, "value": 9.8}, {"recordedAtAgeMonth": 13, "value": 10.2}, {"recordedAtAgeMonth": 14, "value": 10.5}]`
-	hhJSON_BS003 := `[{"recordedAtAgeMonth": 12, "value": 76}, {"recordedAtAgeMonth": 13, "value": 78}, {"recordedAtAgeMonth": 14, "value": 80}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, bbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('BS003', '1.2 Tahun', '2025-10-11', 10.5, 80, 13.0, -0.2, -0.5, $1, $2, '{"averageHb": 11.5}');`, whJSON_BS003, hhJSON_BS003); if err != nil { tx.Rollback(); log.Fatal(err) }
-
-	whJSON_SA004 := `[{"recordedAtAgeMonth": 5, "value": 55}, {"recordedAtAgeMonth": 6, "value": 55.8}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('SA004', '26 minggu', '2025-10-10', 55.8, 155, 21.4, false, true, 0.8, $1, '{"averageHb": 9.6}');`, whJSON_SA004); if err != nil { tx.Rollback(); log.Fatal(err) }
-
-	whJSON_RS005 := `[{"recordedAtAgeMonth": 3, "value": 51}, {"recordedAtAgeMonth": 4, "value": 52}, {"recordedAtAgeMonth": 5, "value": 53.2}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('RS005', '20 Minggu', '2025-10-01', 53.2, 160, 24.0, true, false, 1.2, $1, '{"averageHb": 11.5}');`, whJSON_RS005); if err != nil { tx.Rollback(); log.Fatal(err) }
-
-	whJSON_DA008 := `[{"recordedAtAgeMonth": 5, "value": 58}, {"recordedAtAgeMonth": 6, "value": 60}, {"recordedAtAgeMonth": 7, "value": 61.5}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('DA008', '30 Minggu', '2025-11-05', 61.5, 158, 25.5, true, false, 1.5, $1, '{"averageHb": 12.5}');`, whJSON_DA008); if err != nil { tx.Rollback(); log.Fatal(err) }
-	
-	whJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 38}, {"recordedAtAgeMonth": 188, "value": 40}]`
-	hhJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 152}, {"recordedAtAgeMonth": 188, "value": 155}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('PA006', '15 Tahun', '2025-08-30', 155, 40, 22.5, 16.6, false, $1, $2, '{"averageHb": 11.5}');`, whJSON_PA006, hhJSON_PA006); if err != nil { tx.Rollback(); log.Fatal(err) }
-	
-	whJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 50}, {"recordedAtAgeMonth": 197, "value": 53}]`
-	hhJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 160}, {"recordedAtAgeMonth": 197, "value": 162}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('SA007', '16 Tahun', '2025-10-08', 162, 53, 24.0, 20.2, true, $1, $2, '{"averageHb": 12.2}');`, whJSON_SA007, hhJSON_SA007); if err != nil { tx.Rollback(); log.Fatal(err) }
-
-	pmtItems := []PmtItem{
-		{IconName: "food_bank_outlined", Title: "Recovery Supplementary Food", Description: "Given to malnourished children.", StockCount: 15, TargetGroup: "child", SubItemTitle: "Nutritious Biscuits", SubItemDescription: "Nutrient-dense intake for children"},
-		{IconName: "medication_liquid_outlined", Title: "Iron Folic Acid Tablets (TTD)", Description: "≥90 tablets during pregnancy. ≥30 per month.", StockCount: 120, TargetGroup: "pregnantWoman", SubItemTitle: "Fe Tablets", SubItemDescription: "Prevention of anemia in pregnant women"},
-		{IconName: "bakery_dining_outlined", Title: "Recovery PMT for Pregnant Women", Description: "Given to pregnant women with Chronic Energy Deficiency (KEK).", StockCount: 10, TargetGroup: "pregnantWoman", SubItemTitle: "High-Calorie Biscuits", SubItemDescription: "Additional nutritional intake"},
-		{IconName: "medication_outlined", Title: "TTD for Adolescent Girls", Description: "1 tablet every week throughout the year.", StockCount: 250, TargetGroup: "adolescentGirl", SubItemTitle: "Adolescent Fe Tablets", SubItemDescription: "Weekly anemia prevention"},
-	}
-	for _, item := range pmtItems {
-		_, err = tx.Exec(`INSERT INTO pmt_items (icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description) VALUES ($1, $2, $3, $4, $5, $6, $7)`, item.IconName, item.Title, item.Description, item.StockCount, item.TargetGroup, item.SubItemTitle, item.SubItemDescription)
-		if err != nil { tx.Rollback(); log.Fatal("Gagal seed pmt items: ", err) }
-	}
+    var count int; db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); if count > 0 { fmt.Println("Data dummy sudah ada, seeding dilewati."); return }
+    fmt.Println("Memulai proses seeding data dummy..."); tx, err := db.Begin(); if err != nil { log.Fatal("Gagal memulai transaksi: ", err) }
     
-	today := time.Now().Format("2006-01-02")
-	_, err = tx.Exec(`INSERT INTO attendance (patient_id, date, status) VALUES ('AK002', $1, 'Present'), ('SA007', '2025-10-08', 'Present'), ('RS005', $1, 'Present'), ('NS001', $1, 'Waiting'), ('BS003', $1, 'Waiting');`, today)
-	if err != nil {
-		tx.Rollback()
-		log.Fatal(err)
-	}
+    var posyanduID int; err = tx.QueryRow(`INSERT INTO posyandu (name, address) VALUES ($1, $2) RETURNING id`, "Posyandu Sehat Ceria", "Jl. Mawar No. 12, Jawa Barat").Scan(&posyanduID); if err != nil { tx.Rollback(); log.Fatal(err) }
+    hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost); _, err = tx.Exec(`INSERT INTO users (id, name, username, password_hash, account_type, posyandu_id) VALUES ($1, $2, $3, $4, $5, $6)`, "KDR001", "Anisa (Bidan)", "kader", string(hashedPassword), "kader", posyanduID); if err != nil { tx.Rollback(); log.Fatal(err) }
+    
+    _, err = tx.Exec(`INSERT INTO patients (id, full_name, date_of_birth, mother_name, mother_phone, patient_type) VALUES ('NS001', 'Naufal Sabitululum', '2025-05-01', 'Siti Rahma', '081234567890', 'child'), ('AK002', 'Adinda Kirana', '2025-01-10', 'Dewi Lestari', '089876543210', 'child'), ('BS003', 'Budi Santoso', '2024-08-05', 'Rina Wati', '081122334455', 'child'), ('SA004', 'Siti Aisyah', '1998-04-20', 'Siti Aisyah', '082233445566', 'pregnantWoman'), ('RS005', 'Riana Sari', '1997-07-15', 'Riana Sari', '083344556677', 'pregnantWoman'), ('DA008', 'Dewi Anggraini', '1996-11-12', 'Dewi Anggraini', '081298765432', 'pregnantWoman'), ('PA006', 'Putri Ayu', '2010-01-30', 'Lina Marlina', '085566778899', 'adolescentGirl'), ('SA007', 'Siti Aminah', '2009-05-22', 'Nur Hasanah', '087788990011', 'adolescentGirl');`); if err != nil { tx.Rollback(); log.Fatal(err) }
+    
+    whJSON_NS001 := `[{"recordedAtAgeMonth": 3, "value": 6.0}, {"recordedAtAgeMonth": 4, "value": 6.7}, {"recordedAtAgeMonth": 5, "value": 7.2}]`
+    hhJSON_NS001 := `[{"recordedAtAgeMonth": 3, "value": 61}, {"recordedAtAgeMonth": 4, "value": 64}, {"recordedAtAgeMonth": 5, "value": 66}]`
+    hbJSON_NS001 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 9.8}], "conjunctivaResults": [], "averageHb": 9.8, "indication": "Anemia Berat", "confidenceLevel": 98.0, "nailBedIndication": "Anemia Berat"}`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, bbu_zscore, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('NS001', '5 Bulan', '2025-10-05', 7.2, 66, 11.2, -2.5, -3.1, $1, $2, $3);`, whJSON_NS001, hhJSON_NS001, hbJSON_NS001); if err != nil { tx.Rollback(); log.Fatal(err) }
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, hemoglobin_result) VALUES ('NS001', '4 Bulan', '2025-09-05', 6.7, 64, 11.0, '{"averageHb": 10.1, "indication": "Anemia Sedang"}'), ('NS001', '3 Bulan', '2025-08-05', 6.0, 61, 10.8, null);`); if err != nil { tx.Rollback(); log.Fatal(err) }
 
-	if err := tx.Commit(); err != nil {
-		log.Fatal("Gagal commit transaksi seeding: ", err)
-	}
-	fmt.Println("Seeding data dummy selesai.")
+    hbJSON_AK002 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.92, "hbValue": 11.2}], "conjunctivaResults": [{"objectType": "conjunctiva", "confidence": 0.90, "hbValue": 11.4}], "averageHb": 11.3, "indication": "Normal", "confidenceLevel": 91.0}`
+    whJSON_AK002 := `[{"recordedAtAgeMonth": 7, "value": 7.8}, {"recordedAtAgeMonth": 8, "value": 8.2}, {"recordedAtAgeMonth": 9, "value": 8.5}]`
+    hhJSON_AK002 := `[{"recordedAtAgeMonth": 7, "value": 68}, {"recordedAtAgeMonth": 8, "value": 70}, {"recordedAtAgeMonth": 9, "value": 72}]`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('AK002', '9 Bulan', '2025-10-11', 8.5, 72, 12.5, -1.8, $1, $2, $3);`, whJSON_AK002, hhJSON_AK002, hbJSON_AK002); if err != nil { tx.Rollback(); log.Fatal(err) }
+    
+    whJSON_BS003 := `[{"recordedAtAgeMonth": 12, "value": 9.8}, {"recordedAtAgeMonth": 13, "value": 10.2}, {"recordedAtAgeMonth": 14, "value": 10.5}]`
+    hhJSON_BS003 := `[{"recordedAtAgeMonth": 12, "value": 76}, {"recordedAtAgeMonth": 13, "value": 78}, {"recordedAtAgeMonth": 14, "value": 80}]`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, bbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('BS003', '1.2 Tahun', '2025-10-11', 10.5, 80, 13.0, -0.2, -0.5, $1, $2, '{"averageHb": 11.5}');`, whJSON_BS003, hhJSON_BS003); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+    whJSON_SA004 := `[{"recordedAtAgeMonth": 5, "value": 55}, {"recordedAtAgeMonth": 6, "value": 55.8}]`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('SA004', '26 minggu', '2025-10-10', 55.8, 155, 21.4, false, true, 0.8, $1, '{"averageHb": 9.6}');`, whJSON_SA004); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+    whJSON_RS005 := `[{"recordedAtAgeMonth": 3, "value": 51}, {"recordedAtAgeMonth": 4, "value": 52}, {"recordedAtAgeMonth": 5, "value": 53.2}]`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('RS005', '20 Minggu', '2025-10-01', 53.2, 160, 24.0, true, false, 1.2, $1, '{"averageHb": 11.5}');`, whJSON_RS005); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+    whJSON_DA008 := `[{"recordedAtAgeMonth": 5, "value": 58}, {"recordedAtAgeMonth": 6, "value": 60}, {"recordedAtAgeMonth": 7, "value": 61.5}]`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('DA008', '30 Minggu', '2025-11-05', 61.5, 158, 25.5, true, false, 1.5, $1, '{"averageHb": 12.5}');`, whJSON_DA008); if err != nil { tx.Rollback(); log.Fatal(err) }
+    
+    whJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 38}, {"recordedAtAgeMonth": 188, "value": 40}]`
+    hhJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 152}, {"recordedAtAgeMonth": 188, "value": 155}]`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('PA006', '15 Tahun', '2025-08-30', 155, 40, 22.5, 16.6, false, $1, $2, '{"averageHb": 11.5}');`, whJSON_PA006, hhJSON_PA006); if err != nil { tx.Rollback(); log.Fatal(err) }
+    
+    whJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 50}, {"recordedAtAgeMonth": 197, "value": 53}]`
+    hhJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 160}, {"recordedAtAgeMonth": 197, "value": 162}]`
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('SA007', '16 Tahun', '2025-10-08', 162, 53, 24.0, 20.2, true, $1, $2, '{"averageHb": 12.2}');`, whJSON_SA007, hhJSON_SA007); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+    pmtItems := []PmtItem{
+        {IconName: "food_bank_outlined", Title: "Recovery Supplementary Food", Description: "Given to malnourished children.", StockCount: 15, TargetGroup: "child", SubItemTitle: "Nutritious Biscuits", SubItemDescription: "Nutrient-dense intake for children"},
+        {IconName: "medication_liquid_outlined", Title: "Iron Folic Acid Tablets (TTD)", Description: "≥90 tablets during pregnancy. ≥30 per month.", StockCount: 120, TargetGroup: "pregnantWoman", SubItemTitle: "Fe Tablets", SubItemDescription: "Prevention of anemia in pregnant women"},
+        {IconName: "bakery_dining_outlined", Title: "Recovery PMT for Pregnant Women", Description: "Given to pregnant women with Chronic Energy Deficiency (KEK).", StockCount: 10, TargetGroup: "pregnantWoman", SubItemTitle: "High-Calorie Biscuits", SubItemDescription: "Additional nutritional intake"},
+        {IconName: "medication_outlined", Title: "TTD for Adolescent Girls", Description: "1 tablet every week throughout the year.", StockCount: 250, TargetGroup: "adolescentGirl", SubItemTitle: "Adolescent Fe Tablets", SubItemDescription: "Weekly anemia prevention"},
+    }
+    for _, item := range pmtItems {
+        _, err = tx.Exec(`INSERT INTO pmt_items (icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description) VALUES ($1, $2, $3, $4, $5, $6, $7)`, item.IconName, item.Title, item.Description, item.StockCount, item.TargetGroup, item.SubItemTitle, item.SubItemDescription)
+        if err != nil { tx.Rollback(); log.Fatal("Gagal seed pmt items: ", err) }
+    }
+    
+    today := time.Now().Format("2006-01-02")
+    _, err = tx.Exec(`INSERT INTO attendance (patient_id, date, status) VALUES ('AK002', $1, 'Present'), ('SA007', '2025-10-08', 'Present'), ('RS005', $1, 'Present'), ('NS001', $1, 'Waiting'), ('BS003', $1, 'Waiting');`, today)
+    if err != nil {
+        tx.Rollback()
+        log.Fatal(err)
+    }
+
+    if err := tx.Commit(); err != nil {
+        log.Fatal("Gagal commit transaksi seeding: ", err)
+    }
+    fmt.Println("Seeding data dummy selesai.")
 }
 
 func main() {
-	a := App{}; a.Initialize(); createTables(a.DB); seedData(a.DB); a.Run(":8080")
+    a := App{}; a.Initialize(); createTables(a.DB); seedData(a.DB); a.Run(":8080")
 }
