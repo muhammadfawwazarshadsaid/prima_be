@@ -216,17 +216,30 @@ func (a *App) hemoglobinPredictionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	cmd := exec.Command("python3", "script/hb_processor.py", absPath)
-	output, err := cmd.CombinedOutput()
+cmd := exec.Command("python3", "script/hb_processor.py", absPath)
+	output, err := cmd.CombinedOutput() // This stays the same
 	if err != nil {
 		log.Printf("Error eksekusi script Python: %s\nOutput Script: %s", err, string(output))
 		respondWithError(w, http.StatusInternalServerError, "Proses AI gagal. Cek log server untuk detail.")
 		return
 	}
 
+	outputStr := string(output)
+
+	jsonStartIndex := strings.Index(outputStr, "{")
+	if jsonStartIndex == -1 {
+		log.Printf("Tidak ada JSON object ditemukan di output Python.\nOutput asli: %s", outputStr)
+		respondWithError(w, http.StatusInternalServerError, "Hasil dari AI tidak mengandung JSON yang valid.")
+		return
+	}
+
+	// Extract the JSON part of the string
+	jsonStr := outputStr[jsonStartIndex:]
+
+
 	var result map[string]interface{}
-	if err := json.Unmarshal(output, &result); err != nil {
-		log.Printf("Gagal parsing JSON dari Python: %s\nOutput asli: %s", err, string(output))
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		log.Printf("Gagal parsing JSON dari Python: %s\nOutput asli (setelah dipotong): %s", err, jsonStr)
 		respondWithError(w, http.StatusInternalServerError, "Format hasil dari AI tidak valid")
 		return
 	}
