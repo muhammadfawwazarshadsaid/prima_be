@@ -300,44 +300,104 @@ func (a *App) getDashboardDataHandler(w http.ResponseWriter, r *http.Request) {
         "chartData": chartData,
     }; respondWithJSON(w, http.StatusOK, response)
 }
-
 func (a *App) getChartData() (map[string]interface{}, error) {
     twelveMonthsAgo := time.Now().AddDate(0, -11, 0)
-    query := `SELECT p.patient_type, date_trunc('month', er.examination_date) as month, er.lila, er.tbu_zscore, er.is_bb_stagnan, er.is_ttd_rutin, er.imt, er.hemoglobin_result FROM examination_records er JOIN patients p ON er.patient_id = p.id WHERE er.examination_date >= $1`
-    rows, err := a.DB.Query(query, twelveMonthsAgo); if err != nil { return nil, err }; defer rows.Close()
-    type monthlyStat struct { High, Medium, Safe int }
+    
+    query := `
+        SELECT 
+            p.patient_type, 
+            date_trunc('month', er.examination_date) as month, 
+            er.lila, 
+            er.tbu_zscore, 
+            er.is_bb_stagnan, 
+            er.is_ttd_rutin, 
+            er.imt, 
+            er.hemoglobin_result 
+        FROM examination_records er 
+        JOIN patients p ON er.patient_id = p.id 
+        WHERE er.examination_date >= $1`
+
+    rows, err := a.DB.Query(query, twelveMonthsAgo)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    type monthlyStat struct {
+        High   int
+        Medium int
+        Safe   int
+    }
     stats := make(map[string]map[time.Time]monthlyStat)
+
     for rows.Next() {
-        var rec ExaminationRecord; var month time.Time
-        var lila, tbuz, imt sql.NullFloat64; var stagnan, ttdrutin sql.NullBool; var hemoglobin sql.NullString
-        if err := rows.Scan(&rec.PatientType, &month, &lila, &tbuz, &stagnan, &ttdrutin, &imt, &hemoglobin); err != nil { return nil, err }
-        if lila.Valid { rec.Lila = &lila.Float64 }; if tbuz.Valid { rec.TbUZscore = &tbuz.Float64 }; if imt.Valid { rec.Imt = &imt.Float64 }
-        if stagnan.Valid { rec.IsBbStagnan = &stagnan.Bool }; if ttdrutin.Valid { rec.IsTtdRutin = &ttdrutin.Bool }
+        var rec ExaminationRecord
+        var month time.Time 
+        var lila, tbuz, imt sql.NullFloat64
+        var stagnan, ttdrutin sql.NullBool
+        var hemoglobin sql.NullString
+
+        if err := rows.Scan(&rec.PatientType, &month, &lila, &tbuz, &stagnan, &ttdrutin, &imt, &hemoglobin); err != nil {
+            return nil, err
+        }
+
+        if lila.Valid { rec.Lila = &lila.Float64 }
+        if tbuz.Valid { rec.TbUZscore = &tbuz.Float64 }
+        if imt.Valid { rec.Imt = &imt.Float64 }
+        if stagnan.Valid { rec.IsBbStagnan = &stagnan.Bool }
+        if ttdrutin.Valid { rec.IsTtdRutin = &ttdrutin.Bool }
         if hemoglobin.Valid { rec.HemoglobinResult = json.RawMessage(hemoglobin.String) }
 
-        if _, ok := stats[rec.PatientType]; !ok { stats[rec.PatientType] = make(map[time.Time]monthlyStat) }
-        stat := stats[rec.PatientType][month]
+        if _, ok := stats[rec.PatientType]; !ok {
+            stats[rec.PatientType] = make(map[time.Time]monthlyStat)
+        }
+		
+		stat := stats[rec.PatientType][month]
+        
         risk := rec.CalculateRiskLevel()
-        if risk == RiskHigh { stat.High++ } else if risk == RiskMedium { stat.Medium++ } else { stat.Safe++ }
+        if risk == RiskHigh {
+            stat.High++
+        } else if risk == RiskMedium {
+            stat.Medium++
+        } else {
+            stat.Safe++
+        }
+        
         stats[rec.PatientType][month] = stat
     }
-    type flSpot struct { X float64 `json:"x"`; Y float64 `json:"y"` }
+
+    type flSpot struct {
+        X float64 `json:"x"`
+        Y float64 `json:"y"`
+    }
+
     buildSpots := func(patientType string) map[string][]flSpot {
         high, medium, safe := []flSpot{}, []flSpot{}, []flSpot{}
         now := time.Now()
+        
         for i := 0; i < 12; i++ {
-            month := now.AddDate(0, -i, 0)
-            monthStart := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, time.UTC)
-            x := float64(month.Month())
+            monthTime := now.AddDate(0, -i, 0)
+            monthStart := time.Date(monthTime.Year(), monthTime.Month(), 1, 0, 0, 0, 0, time.UTC)
+            
+            x := float64(monthTime.Month())
+            
             var s monthlyStat
-            if monthStats, ok := stats[patientType]; ok { s = monthStats[monthStart] }
+            if monthStats, ok := stats[patientType]; ok {
+                s = monthStats[monthStart]
+            }
+
             high = append(high, flSpot{X: x, Y: float64(s.High)})
             medium = append(medium, flSpot{X: x, Y: float64(s.Medium)})
             safe = append(safe, flSpot{X: x, Y: float64(s.Safe)})
         }
         return map[string][]flSpot{"highRisk": high, "mediumRisk": medium, "lowRisk": safe}
     }
-    return map[string]interface{}{"child": buildSpots("child"), "pregnantWoman": buildSpots("pregnantWoman"), "adolescentGirl": buildSpots("adolescentGirl")}, nil
+
+    return map[string]interface{}{
+        "child":          buildSpots("child"),
+        "pregnantWoman":  buildSpots("pregnantWoman"),
+        "adolescentGirl": buildSpots("adolescentGirl"),
+    }, nil
 }
 
 func (a *App) getTodaysAttendanceHandler(w http.ResponseWriter, r *http.Request) {
