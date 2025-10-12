@@ -224,18 +224,15 @@ cmd := exec.Command("python3", "script/hb_processor.py", absPath)
 		return
 	}
 
+	
 	outputStr := string(output)
-
 	jsonStartIndex := strings.Index(outputStr, "{")
 	if jsonStartIndex == -1 {
 		log.Printf("Tidak ada JSON object ditemukan di output Python.\nOutput asli: %s", outputStr)
 		respondWithError(w, http.StatusInternalServerError, "Hasil dari AI tidak mengandung JSON yang valid.")
 		return
 	}
-
-	// Extract the JSON part of the string
 	jsonStr := outputStr[jsonStartIndex:]
-
 
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
@@ -244,16 +241,24 @@ cmd := exec.Command("python3", "script/hb_processor.py", absPath)
 		return
 	}
 
+	// ===================== PERBAIKAN DI SINI =====================
 	serverURL := os.Getenv("PUBLIC_SERVER_URL")
 	if serverURL == "" {
-		serverURL = "http://localhost:8080" 
+		serverURL = "http://54.206.54.157:8080" // Pastikan ini adalah alamat IP publik atau domain Anda
 	}
+
+	// Cek apakah kunci 'boundedBoxImagePath' ada di hasil dari Python
 	if relativePath, ok := result["boundedBoxImagePath"].(string); ok {
 		cleanPath, err := filepath.Rel(".", relativePath)
 		if err == nil {
+			// 1. Buat kunci BARU 'boundedBoxImageURL' dengan URL lengkap
 			result["boundedBoxImageURL"] = serverURL + "/" + filepath.ToSlash(cleanPath)
+
+			// 2. (Opsional tapi direkomendasikan) Hapus kunci lama agar tidak membingungkan
+			delete(result, "boundedBoxImagePath")
 		}
 	}
+	// =============================================================
 
 	respondWithJSON(w, http.StatusOK, result)
 }
