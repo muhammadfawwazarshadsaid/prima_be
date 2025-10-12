@@ -40,15 +40,24 @@ type FullExaminationRecord struct {
 	PersonalData Patient `json:"personalData"`
 }
 
-
 func (a *App) Initialize() {
 	err := godotenv.Load()
 	if err != nil { log.Println("Perhatian: Tidak dapat memuat file .env.") }
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" { connStr = "postgres://prima_db:prima_db@16.176.219.213:5432/prima_db?sslmode=disable" }
-	a.DB, err = sql.Open("postgres", connStr)
-	if err != nil { log.Fatal("Gagal membuka koneksi ke database:", err) }
-	if err = a.DB.Ping(); err != nil { log.Fatal("Tidak bisa terhubung ke database:", err) }
+
+	for i := 0; i < 5; i++ {
+		a.DB, err = sql.Open("postgres", connStr)
+		if err == nil {
+			if err = a.DB.Ping(); err == nil {
+				break
+			}
+		}
+		log.Println("Gagal terhubung ke database, mencoba lagi dalam 2 detik...")
+		time.Sleep(2 * time.Second)
+	}
+	if err != nil { log.Fatal("Tidak bisa terhubung ke database setelah beberapa kali percobaan:", err) }
+
 	fmt.Println("Berhasil terhubung ke PostgreSQL!")
 	jwtSecret := os.Getenv("JWT_SECRET_KEY")
 	if jwtSecret == "" { jwtSecret = "kunci-rahasia-default-jangan-dipakai-di-produksi" }
