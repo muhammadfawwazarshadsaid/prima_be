@@ -1,45 +1,67 @@
-# Stage 1 - Build
-# Menggunakan base image Debian (Bookworm) dengan Go versi 1.25
+# ============================================================
+# 🏗️ STAGE 1 — Builder (Go + Python deps)
+# ============================================================
 FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 
-# Copy dependency files dan download dependencies
+# ------------------------------------------------------------
+# 1️⃣ Go dependencies
+# ------------------------------------------------------------
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy seluruh source code
+# Copy seluruh source code Go
 COPY . .
 
 # Build binary Go
-RUN go build -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
-# Install Python dan pip menggunakan apt-get
+# ------------------------------------------------------------
+# 2️⃣ Install Python & pip
+# ------------------------------------------------------------
 RUN apt-get update && apt-get install -y python3 python3-pip
 
-# Copy script dan requirements
+# Copy Python script dan requirements
 COPY script/ /app/script/
 
-# Install dependensi Python
-RUN pip3 install --no-cache-dir -r /app/script/requirements.txt --break-system-packages
+# ------------------------------------------------------------
+# 3️⃣ Install Python dependencies (CPU only, cached)
+#    Use buildkit mount cache for faster rebuilds
+# ------------------------------------------------------------
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --no-cache-dir \
+    torch==2.8.0+cpu \
+    torchvision==0.23.0+cpu \
+    torchaudio==2.8.0+cpu \
+    ultralytics==8.3.212 \
+    scikit-image \
+    jinja2 \
+    --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Copy model
+# ------------------------------------------------------------
+# 4️⃣ Copy model dan siapkan folder kosong processed_images
+# ------------------------------------------------------------
 COPY model/ /app/model/
-
-# Pastikan folder processed_images ada (meski kosong)
 RUN mkdir -p /app/processed_images
 
-# Stage 2 - Runtime image ringan (tetap menggunakan Alpine)
+# ============================================================
+# 🚀 STAGE 2 — Runtime (Alpine ringan)
+# ============================================================
 FROM alpine:latest
 WORKDIR /root/
 
-# Copy binary Go yang sudah di-build dari stage builder
+# Copy binary Go
 COPY --from=builder /app/main .
 
-# Copy script, model, dan direktori penting lainnya
+# Copy script & model
 COPY --from=builder /app/script/ /root/script/
 COPY --from=builder /app/model/ /root/model/
+
+# Copy folder kosong processed_images (supaya gak error)
 COPY --from=builder /app/processed_images /root/processed_images
+
+# Copy env file
 COPY .env .
 
 EXPOSE 8080
