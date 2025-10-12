@@ -209,6 +209,7 @@ func (a *App) createExaminationRecordHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Printf("Error decoding request body: %v", err) 
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -218,10 +219,9 @@ func (a *App) createExaminationRecordHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	query := `
-		INSERT INTO examination_records (patient_id, examination_date, bb, tb, lila, hemoglobin_result) 
-		VALUES ($1, $2, $3, $4, $5, $6) 
-		RETURNING id;`
+	query := `INSERT INTO examination_records (patient_id, examination_date, bb, tb, lila, hemoglobin_result) 
+			  VALUES ($1, $2, $3, $4, $5, $6) 
+			  RETURNING id;`
 
 	var newRecordID string
 	err := a.DB.QueryRow(
@@ -254,7 +254,6 @@ func (a *App) createExaminationRecordHandler(w http.ResponseWriter, r *http.Requ
 
 	respondWithJSON(w, http.StatusCreated, records[0])
 }
-
 func (a *App) deleteExaminationRecordHandler(w http.ResponseWriter, r *http.Request) {
     id := mux.Vars(r)["id"]; res, err := a.DB.Exec("DELETE FROM examination_records WHERE id=$1", id); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }
 	count, _ := res.RowsAffected(); if count == 0 { respondWithError(w, http.StatusNotFound, "Record not found"); return }; respondWithJSON(w, http.StatusOK, map[string]string{"message": "Examination record deleted"})
