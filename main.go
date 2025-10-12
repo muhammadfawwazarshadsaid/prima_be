@@ -748,7 +748,7 @@ func seedData(db *sql.DB) {
     _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, bbu_zscore, tbu_zscore, hemoglobin_result, denver_milestones, nutrient_history, weight_history, height_history) VALUES ('RP010', '8 Bulan', '2025-10-12', 7.5, 69, 12.0, -1.9, -2.1, $1, $2, $3, $4, $5);`, hbJSON_RP010, denverJSON_Full, nutrientJSON_Full, whJSON_RP010, hhJSON_RP010); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
 
     // -- Kategori: Ibu Hamil --
-    hhJSON_Static := `[{"recordedAtAgeMonth": 1, "value": 155}]` /
+    hhJSON_Static := `[{"recordedAtAgeMonth": 1, "value": 155}]` 
 
     // Siti Aisyah (SA004)
     hbJSON_SA004 := `{"averageHb": 9.6, "indication": "Anemia Sedang", "nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 9.6}], "conjunctivaResults": [], "confidenceLevel": 95.0}`
