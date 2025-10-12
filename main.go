@@ -776,9 +776,20 @@ func (a *App) getVulnerablePatientsHandler(w http.ResponseWriter, r *http.Reques
 
 func (a *App) initializeRoutes() {
     a.Router.Use(loggingMiddleware); 
-	fs := http.StripPrefix("/processed_images/", http.FileServer(http.Dir("./processed_images")))
-	a.Router.PathPrefix("/processed_images/").Handler(fs)
+	// fs := http.StripPrefix("/processed_images/", http.FileServer(http.Dir("./processed_images")))
+	// a.Router.PathPrefix("/processed_images/").Handler(fs)
 	
+    exePath, err := os.Executable()
+    if err != nil {
+        log.Fatal("Tidak dapat menemukan path executable:", err)
+    }
+    rootDir := filepath.Dir(exePath)
+    imageDir := filepath.Join(rootDir, "processed_images")
+
+    fs := http.StripPrefix("/processed_images/", http.FileServer(http.Dir(imageDir)))
+    a.Router.PathPrefix("/processed_images/").Handler(fs)
+    log.Printf("Menyajikan file statis dari direktori: %s", imageDir) 
+    
 	apiV1 := a.Router.PathPrefix("/api/v1").Subrouter(); 
 	apiV1.HandleFunc("/auth/login", a.loginHandler).Methods("POST"); authRoutes := apiV1.PathPrefix("").Subrouter(); authRoutes.Use(a.jwtAuthenticationMiddleware)
 	authRoutes.HandleFunc("/examinations/predict-hb", a.hemoglobinPredictionHandler).Methods("POST")
