@@ -508,28 +508,85 @@ func (a *App) getTodaysAttendanceHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request) {
-    date := r.URL.Query().Get("date"); 
-    category := r.URL.Query().Get("category"); 
+    date := r.URL.Query().Get("date")
+    category := r.URL.Query().Get("category")
 
-    rows, err := a.DB.Query(`SELECT p.id, p.full_name, p.patient_type, a.status FROM attendance a JOIN patients p ON a.patient_id = p.id WHERE a.date = $1 AND p.patient_type = $2`, date, category)
-    if err != nil { 
-        respondWithError(w, http.StatusInternalServerError, err.Error()); 
-        return 
-    }; 
-    defer rows.Close(); 
-    
+    query := `
+        WITH latest_records AS (
+            SELECT 
+                *, 
+                ROW_NUMBER() OVER(PARTITION BY patient_id ORDER BY examination_date DESC) as rn 
+            FROM examination_records
+        )
+        SELECT 
+            p.id, p.full_name, p.patient_type, a.status,
+            lr.id, lr.age, lr.examination_date, lr.tb, lr.bb, lr.lila, lr.tbu_zscore, lr.bbu_zscore, 
+            lr.imt, lr.is_ttd_rutin, lr.bb_gain_per_month, lr.is_bb_stagnan,
+            lr.weight_history, lr.height_history, lr.nutrient_history, 
+            lr.denver_milestones, lr.hemoglobin_result, lr.pmt_history
+        FROM attendance a
+        JOIN patients p ON a.patient_id = p.id
+        LEFT JOIN latest_records lr ON p.id = lr.patient_id AND lr.rn = 1
+        WHERE a.date = $1 AND p.patient_type = $2`
+
+    rows, err := a.DB.Query(query, date, category)
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+    defer rows.Close()
+
     records := []AttendanceRecord{}
-    for rows.Next() { 
-        var rec AttendanceRecord; 
-        if err := rows.Scan(&rec.PatientID, &rec.Name, &rec.PatientType, &rec.Status); err != nil { 
-            respondWithError(w, http.StatusInternalServerError, err.Error()); 
-            return 
-        }; 
-        records = append(records, rec) 
-    }; 
+    for rows.Next() {
+        var rec AttendanceRecord
+        var examRec FullExaminationRecord
+        
+        var examID, examAge sql.NullString
+        var examDate sql.NullTime
+        var tb, bb, lila, tbu, bbu, imt, bbGain sql.NullFloat64
+        var ttdRutin, bbStagnan sql.NullBool
+        var weightHistory, heightHistory, nutrientHistory, denver, hemoglobin, pmtHistory sql.NullString
+
+        err := rows.Scan(
+            &rec.PatientID, &rec.Name, &rec.PatientType, &rec.Status,
+            &examID, &examAge, &examDate, &tb, &bb, &lila, &tbu, &bbu, 
+            &imt, &ttdRutin, &bbGain, &bbStagnan,
+            &weightHistory, &heightHistory, &nutrientHistory,
+            &denver, &hemoglobin, &pmtHistory,
+        )
+        if err != nil {
+            respondWithError(w, http.StatusInternalServerError, err.Error())
+            return
+        }
+
+        if examID.Valid {
+            examRec.ID = examID.String
+            examRec.PatientID = rec.PatientID
+            examRec.Age = examAge.String
+            examRec.ExaminationDate = examDate.Time
+            if tb.Valid { examRec.TB = &tb.Float64 }
+            if bb.Valid { examRec.BB = &bb.Float64 }
+            if lila.Valid { examRec.Lila = &lila.Float64 }
+            if tbu.Valid { examRec.TbUZscore = &tbu.Float64 }
+            if bbu.Valid { examRec.BbUZscore = &bbu.Float64 }
+            if imt.Valid { examRec.Imt = &imt.Float64 }
+            if bbGain.Valid { examRec.BbGainPerMonth = &bbGain.Float64 }
+            if ttdRutin.Valid { examRec.IsTtdRutin = &ttdRutin.Bool }
+            if bbStagnan.Valid { examRec.IsBbStagnan = &bbStagnan.Bool }
+            if weightHistory.Valid { examRec.WeightHistory = []byte(weightHistory.String) }
+            if heightHistory.Valid { examRec.HeightHistory = []byte(heightHistory.String) }
+            if nutrientHistory.Valid { examRec.NutrientHistory = []byte(nutrientHistory.String) }
+            if denver.Valid { examRec.DenverMilestones = []byte(denver.String) }
+            if hemoglobin.Valid { examRec.HemoglobinResult = []byte(hemoglobin.String) }
+            if pmtHistory.Valid { examRec.PmtHistory = []byte(pmtHistory.String) }
+            
+            rec.ExaminationRecord = &examRec
+        }
+
+        records = append(records, rec)
+    }
     respondWithJSON(w, http.StatusOK, records)
 }
-
 func generateInterventionAnalysis(rec FullExaminationRecord) string {
     var hbResult HemoglobinResult
     if len(rec.HemoglobinResult) > 0 && rec.HemoglobinResult[0] != 'n' { json.Unmarshal(rec.HemoglobinResult, &hbResult) }
