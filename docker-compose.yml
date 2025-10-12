@@ -33,7 +33,7 @@ services:
     ports:
       - "${APP_PORT:-8080}:${APP_PORT:-8080}"
     volumes:
-      - ./processed_images:/root/processed_images
+      - ./processed_images:/app/processed_images
     networks:
       - prima_net
 
