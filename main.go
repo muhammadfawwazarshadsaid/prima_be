@@ -413,9 +413,31 @@ func scanFullExaminationRecords(rows *sql.Rows) []FullExaminationRecord {
     records := []FullExaminationRecord{}
     for rows.Next() {
         var rec FullExaminationRecord
-        err := rows.Scan(&rec.ID, &rec.PersonalData.ID, &rec.PersonalData.FullName, &rec.PersonalData.DateOfBirth, &rec.PersonalData.MotherName, &rec.PersonalData.MotherPhone, &rec.WeightHistory, &rec.HeightHistory, &rec.NutrientHistory, &rec.DenverMilestones, &rec.Age, &rec.PersonalData.PatientType, &rec.ExaminationDate, &rec.TB, &rec.BB, &rec.Lila, &rec.TbUZscore, &rec.BbUZscore, &rec.Imt, &rec.IsTtdRutin, &rec.BbGainPerMonth, &rec.IsBbStagnan, &rec.HemoglobinResult, &rec.PmtHistory)
-        if err != nil { log.Printf("Error scanning record: %v", err); return nil }
-        rec.PatientID = rec.PersonalData.ID; rec.PatientType = rec.PersonalData.PatientType; records = append(records, rec)
+        var weightHistory, heightHistory, nutrientHistory, denverMilestones, hemoglobinResult, pmtHistory sql.NullString
+
+        err := rows.Scan(
+            &rec.ID, &rec.PersonalData.ID, &rec.PersonalData.FullName, &rec.PersonalData.DateOfBirth, 
+            &rec.PersonalData.MotherName, &rec.PersonalData.MotherPhone, 
+            &weightHistory, &heightHistory, &nutrientHistory, &denverMilestones, 
+            &rec.Age, &rec.PersonalData.PatientType, &rec.ExaminationDate, 
+            &rec.TB, &rec.BB, &rec.Lila, &rec.TbUZscore, &rec.BbUZscore, &rec.Imt, 
+            &rec.IsTtdRutin, &rec.BbGainPerMonth, &rec.IsBbStagnan, 
+            &hemoglobinResult, &pmtHistory,
+        )
+        if err != nil { 
+            log.Printf("Error scanning record: %v", err)
+            return nil 
+        }
+        if weightHistory.Valid { rec.WeightHistory = []byte(weightHistory.String) }
+        if heightHistory.Valid { rec.HeightHistory = []byte(heightHistory.String) }
+        if nutrientHistory.Valid { rec.NutrientHistory = []byte(nutrientHistory.String) }
+        if denverMilestones.Valid { rec.DenverMilestones = []byte(denverMilestones.String) }
+        if hemoglobinResult.Valid { rec.HemoglobinResult = []byte(hemoglobinResult.String) }
+        if pmtHistory.Valid { rec.PmtHistory = []byte(pmtHistory.String) }
+
+        rec.PatientID = rec.PersonalData.ID
+        rec.PatientType = rec.PersonalData.PatientType
+        records = append(records, rec)
     }
     return records
 }
