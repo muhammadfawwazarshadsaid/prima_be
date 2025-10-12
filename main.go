@@ -138,10 +138,11 @@ type PmtItem struct {
 }
 
 type AttendanceRecord struct {
-	Name              string                 `json:"name"`
-	PatientType       string                 `json:"patientType"`
-	Status            string                 `json:"status"`
-	ExaminationRecord *FullExaminationRecord `json:"examinationRecord,omitempty"`
+    PatientID         string                 `json:"patientId"` 
+    Name              string                 `json:"name"`
+    PatientType       string                 `json:"patientType"`
+    Status            string                 `json:"status"`
+    ExaminationRecord *FullExaminationRecord `json:"examinationRecord,omitempty"`
 }
 
 const ( RiskHigh = "High"; RiskMedium = "Medium"; RiskSafe = "Safe" )
@@ -407,9 +408,26 @@ func (a *App) getTodaysAttendanceHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request) {
-    date := r.URL.Query().Get("date"); category := r.URL.Query().Get("category"); rows, err := a.DB.Query(`SELECT p.full_name, p.patient_type, a.status FROM attendance a JOIN patients p ON a.patient_id = p.id WHERE a.date = $1 AND p.patient_type = $2`, date, category)
-    if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close(); records := []AttendanceRecord{}
-    for rows.Next() { var rec AttendanceRecord; if err := rows.Scan(&rec.Name, &rec.PatientType, &rec.Status); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; records = append(records, rec) }; respondWithJSON(w, http.StatusOK, records)
+    date := r.URL.Query().Get("date"); 
+    category := r.URL.Query().Get("category"); 
+
+    rows, err := a.DB.Query(`SELECT p.id, p.full_name, p.patient_type, a.status FROM attendance a JOIN patients p ON a.patient_id = p.id WHERE a.date = $1 AND p.patient_type = $2`, date, category)
+    if err != nil { 
+        respondWithError(w, http.StatusInternalServerError, err.Error()); 
+        return 
+    }; 
+    defer rows.Close(); 
+    
+    records := []AttendanceRecord{}
+    for rows.Next() { 
+        var rec AttendanceRecord; 
+        if err := rows.Scan(&rec.PatientID, &rec.Name, &rec.PatientType, &rec.Status); err != nil { 
+            respondWithError(w, http.StatusInternalServerError, err.Error()); 
+            return 
+        }; 
+        records = append(records, rec) 
+    }; 
+    respondWithJSON(w, http.StatusOK, records)
 }
 
 func generateInterventionAnalysis(rec FullExaminationRecord) string {
