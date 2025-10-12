@@ -306,7 +306,7 @@ func (a *App) getChartData() (map[string]interface{}, error) {
     query := `
         SELECT 
             p.patient_type, 
-            date_trunc('month', er.examination_date) as month, 
+            to_char(er.examination_date, 'YYYY-MM') as month_key, 
             er.lila, 
             er.tbu_zscore, 
             er.is_bb_stagnan, 
@@ -328,16 +328,16 @@ func (a *App) getChartData() (map[string]interface{}, error) {
         Medium int
         Safe   int
     }
-    stats := make(map[string]map[time.Time]monthlyStat)
+    stats := make(map[string]map[string]monthlyStat)
 
     for rows.Next() {
         var rec ExaminationRecord
-        var month time.Time 
+        var monthKey string 
         var lila, tbuz, imt sql.NullFloat64
         var stagnan, ttdrutin sql.NullBool
         var hemoglobin sql.NullString
 
-        if err := rows.Scan(&rec.PatientType, &month, &lila, &tbuz, &stagnan, &ttdrutin, &imt, &hemoglobin); err != nil {
+        if err := rows.Scan(&rec.PatientType, &monthKey, &lila, &tbuz, &stagnan, &ttdrutin, &imt, &hemoglobin); err != nil {
             return nil, err
         }
 
@@ -349,10 +349,10 @@ func (a *App) getChartData() (map[string]interface{}, error) {
         if hemoglobin.Valid { rec.HemoglobinResult = json.RawMessage(hemoglobin.String) }
 
         if _, ok := stats[rec.PatientType]; !ok {
-            stats[rec.PatientType] = make(map[time.Time]monthlyStat)
+            stats[rec.PatientType] = make(map[string]monthlyStat)
         }
-		
-		stat := stats[rec.PatientType][month]
+        
+        stat := stats[rec.PatientType][monthKey]
         
         risk := rec.CalculateRiskLevel()
         if risk == RiskHigh {
@@ -363,7 +363,7 @@ func (a *App) getChartData() (map[string]interface{}, error) {
             stat.Safe++
         }
         
-        stats[rec.PatientType][month] = stat
+        stats[rec.PatientType][monthKey] = stat
     }
 
     type flSpot struct {
@@ -377,13 +377,14 @@ func (a *App) getChartData() (map[string]interface{}, error) {
         
         for i := 0; i < 12; i++ {
             monthTime := now.AddDate(0, -i, 0)
-            monthStart := time.Date(monthTime.Year(), monthTime.Month(), 1, 0, 0, 0, 0, time.UTC)
+            
+            monthKey := monthTime.Format("2006-01") 
             
             x := float64(monthTime.Month())
             
             var s monthlyStat
             if monthStats, ok := stats[patientType]; ok {
-                s = monthStats[monthStart]
+                s = monthStats[monthKey]
             }
 
             high = append(high, flSpot{X: x, Y: float64(s.High)})
@@ -399,7 +400,6 @@ func (a *App) getChartData() (map[string]interface{}, error) {
         "adolescentGirl": buildSpots("adolescentGirl"),
     }, nil
 }
-
 func (a *App) getTodaysAttendanceHandler(w http.ResponseWriter, r *http.Request) {
     today := time.Now().Format("2006-01-02"); query := `SELECT p.full_name, p.patient_type, a.status FROM attendance a JOIN patients p ON a.patient_id = p.id WHERE a.date = $1`; rows, err := a.DB.Query(query, today)
     if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close(); records := []AttendanceRecord{}
