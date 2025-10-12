@@ -1,6 +1,6 @@
 # Stage 1 - Build
 # Menggunakan base image Debian (Bullseye) yang kompatibel dengan PyTorch
-FROM golang:1.25-bullseye AS builder
+FROM golang:1.22-bullseye AS builder
 
 WORKDIR /app
 
@@ -21,8 +21,6 @@ RUN apt-get update && apt-get install -y python3 python3-pip
 COPY script/ /app/script/
 
 # Install dependensi Python
-# --break-system-packages mungkin tidak diperlukan di Debian, bisa dicoba hapus
-# jika error lagi, tambahkan kembali.
 RUN pip3 install --no-cache-dir -r /app/script/requirements.txt
 
 # Copy model
