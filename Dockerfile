@@ -1,42 +1,39 @@
 # ===========================
 # 🏗️ Stage 1 - Build
 # ===========================
-FROM golang:1.25-bullseye AS builder
+FROM golang:1.23-bullseye AS builder
 
 WORKDIR /app
 
-# --- Install Python & pip ---
-RUN apt-get update && apt-get install -y python3 python3-pip
+# Install Python dan pip
+RUN apt-get update && apt-get install -y python3 python3-pip libgl1 libglib2.0-0
 
-# --- Copy dependency files dan download Go dependencies ---
+# Copy dependency files dan download Go dependencies
 COPY go.mod go.sum ./
 RUN go mod download
 
-# --- Copy seluruh source code dan build binary Go ---
+# Copy seluruh source code
 COPY . .
+
+# Build binary Go
 RUN go build -o main .
 
-# --- Copy Python script dan install dependencies ---
+# Copy script dan install Python dependencies
 COPY script/ /app/script/
 RUN pip3 install --no-cache-dir -r /app/script/requirements.txt
 
-# --- Copy model (jika ada model ML) ---
+# Copy model
 COPY model/ /app/model/
-
 
 # ===========================
 # 🚀 Stage 2 - Runtime Image
 # ===========================
 FROM debian:bullseye-slim
-
 WORKDIR /root/
-
-# --- Copy hasil build ---
 COPY --from=builder /app/main .
-COPY .env .
 COPY --from=builder /app/script /root/script
 COPY --from=builder /app/model /root/model
+COPY .env .
 
 EXPOSE 8080
-
 CMD ["./main"]
