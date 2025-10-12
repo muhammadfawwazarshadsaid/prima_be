@@ -328,7 +328,7 @@ func (a *App) getChartData() (map[string]interface{}, error) {
         for i := 0; i < 12; i++ {
             month := now.AddDate(0, -i, 0)
             monthStart := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, time.UTC)
-            x := float64(12 - i)
+            x := float64(month.Month())
             var s monthlyStat
             if monthStats, ok := stats[patientType]; ok { s = monthStats[monthStart] }
             high = append(high, flSpot{X: x, Y: float64(s.High)})
