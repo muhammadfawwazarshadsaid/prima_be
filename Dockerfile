@@ -1,7 +1,7 @@
 # ===========================
 # 🏗️ Stage 1 - Build
 # ===========================
-FROM golang:1.23-bullseye AS builder
+FROM golang:1.25-rc-bullseye AS builder
 
 WORKDIR /app
 
