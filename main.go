@@ -199,10 +199,60 @@ func (a *App) deletePatientHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) createExaminationRecordHandler(w http.ResponseWriter, r *http.Request) {
-	var rec ExaminationRecord; if err := json.NewDecoder(r.Body).Decode(&rec); err != nil { respondWithError(w, http.StatusBadRequest, "Invalid request body"); return }
-	query := `INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, tbu_zscore, bbu_zscore, imt, is_ttd_rutin, bb_gain_per_month, is_bb_stagnan, weight_history, height_history, nutrient_history, denver_milestones, hemoglobin_result, pmt_history) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id;`
-	err := a.DB.QueryRow(query, rec.PatientID, rec.Age, rec.ExaminationDate, rec.TB, rec.BB, rec.Lila, rec.TbUZscore, rec.BbUZscore, rec.Imt, rec.IsTtdRutin, rec.BbGainPerMonth, rec.IsBbStagnan, rec.WeightHistory, rec.HeightHistory, rec.NutrientHistory, rec.DenverMilestones, rec.HemoglobinResult, rec.PmtHistory).Scan(&rec.ID)
-	if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; respondWithJSON(w, http.StatusCreated, rec)
+	var payload struct {
+		PatientID        string          `json:"patientId"`
+		ExaminationDate  time.Time       `json:"examinationDate"`
+		HemoglobinResult json.RawMessage `json:"hemoglobinResult"`
+		BB               *float64        `json:"bb"`
+		TB               *float64        `json:"tb"`
+		Lila             *float64        `json:"lila"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if payload.PatientID == "" {
+		respondWithError(w, http.StatusBadRequest, "patientId is required")
+		return
+	}
+
+	query := `
+		INSERT INTO examination_records (patient_id, examination_date, bb, tb, lila, hemoglobin_result) 
+		VALUES ($1, $2, $3, $4, $5, $6) 
+		RETURNING id;`
+
+	var newRecordID string
+	err := a.DB.QueryRow(
+		query,
+		payload.PatientID,
+		payload.ExaminationDate,
+		payload.BB,
+		payload.TB,
+		payload.Lila,
+		payload.HemoglobinResult,
+	).Scan(&newRecordID)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to create record: "+err.Error())
+		return
+	}
+
+	rows, err := a.DB.Query(getFullExaminationRecordQuery("lr.id = $1", ""), newRecordID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to fetch newly created record: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	records := scanFullExaminationRecords(rows)
+	if len(records) == 0 {
+		respondWithError(w, http.StatusNotFound, "Could not find the record after creation")
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, records[0])
 }
 
 func (a *App) deleteExaminationRecordHandler(w http.ResponseWriter, r *http.Request) {
