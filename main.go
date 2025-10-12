@@ -521,7 +521,10 @@ func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request
         SELECT 
             p.id, 
             p.full_name, 
-            p.patient_type, 
+            p.patient_type,
+            p.date_of_birth,      
+            p.mother_name,       
+            p.mother_phone,       
             a.status,
             lr.id, 
             lr.age, 
@@ -547,6 +550,9 @@ func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request
     for rows.Next() {
         var rec AttendanceRecord
         var examRec FullExaminationRecord
+
+        var dob sql.NullTime
+        var motherName, motherPhone sql.NullString
         var examID, age sql.NullString
         var examDate sql.NullTime
         var tb, bb, lila, tbuz, bbuz, imt, bbGain sql.NullFloat64
@@ -554,7 +560,9 @@ func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request
         var hemoglobin, pmtHistory sql.NullString
         
         err := rows.Scan(
-            &rec.PatientID, &rec.Name, &rec.PatientType, &rec.Status,
+            &rec.PatientID, &rec.Name, &rec.PatientType,
+            &dob, &motherName, &motherPhone, 
+            &rec.Status,
             &examID, &age, &examDate,
             &tb, &bb, &lila, &tbuz, &bbuz, &imt,
             &ttd, &stagnan, &bbGain,
@@ -568,9 +576,10 @@ func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request
 
         if examID.Valid {
             examRec.ID = examID.String
-            examRec.PatientID = rec.PatientID
-            examRec.Age = age.String
-            examRec.ExaminationDate = examDate.Time
+            examRec.PatientID = rec.PatientID 
+            examRec.PatientType = rec.PatientType
+            if age.Valid { examRec.Age = age.String }
+            if examDate.Valid { examRec.ExaminationDate = examDate.Time }
             if tb.Valid { examRec.TB = &tb.Float64 }
             if bb.Valid { examRec.BB = &bb.Float64 }
             if lila.Valid { examRec.Lila = &lila.Float64 }
@@ -582,6 +591,15 @@ func (a *App) getAttendanceRecordsHandler(w http.ResponseWriter, r *http.Request
             if bbGain.Valid { examRec.BbGainPerMonth = &bbGain.Float64 }
             if hemoglobin.Valid { examRec.HemoglobinResult = []byte(hemoglobin.String) }
             if pmtHistory.Valid { examRec.PmtHistory = []byte(pmtHistory.String) }
+            
+            examRec.PersonalData = Patient{
+                ID:          rec.PatientID,
+                FullName:    rec.Name,
+                PatientType: rec.PatientType,
+            }
+            if dob.Valid { examRec.PersonalData.DateOfBirth = dob.Time }
+            if motherName.Valid { examRec.PersonalData.MotherName = motherName.String }
+            if motherPhone.Valid { examRec.PersonalData.MotherPhone = motherPhone.String }
             
             rec.ExaminationRecord = &examRec
         }
