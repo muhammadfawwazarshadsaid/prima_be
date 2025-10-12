@@ -1,14 +1,13 @@
 # ============================================================
 # 🧩 STAGE 1: PYTHON DEPENDENCIES (HEAVY LAYER)
 # ============================================================
-FROM python:3.11-slim AS python-base
+FROM python:3.11-bookworm AS python-base
 WORKDIR /deps
 
 # Install runtime dependencies for OpenCV and Ultralytics
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
-    libgthread-2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install (with torch CPU wheels)
