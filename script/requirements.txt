@@ -1,7 +1,7 @@
-numpy
-torch==2.8.0+cpu
-torchvision==0.23.0+cpu
-torchaudio==2.8.0+cpu
-ultralytics==8.3.212
 --extra-index-url https://download.pytorch.org/whl/cpu
+
+numpy
+torch
+torchvision
 scikit-image
+ultralytics
