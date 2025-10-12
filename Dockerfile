@@ -26,6 +26,9 @@ RUN pip3 install --no-cache-dir -r /app/script/requirements.txt --break-system-p
 # Copy model
 COPY model/ /app/model/
 
+# Pastikan folder processed_images ada (meski kosong)
+RUN mkdir -p /app/processed_images
+
 # Stage 2 - Runtime image ringan (tetap menggunakan Alpine)
 FROM alpine:latest
 WORKDIR /root/
