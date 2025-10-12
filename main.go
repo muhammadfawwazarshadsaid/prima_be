@@ -526,7 +526,14 @@ func seedData(db *sql.DB) {
     // --- DATA PEMERIKSAAN ---
 
     // -- Kategori: Anak --
-    denverJSON_Full := `[{"task":"Menatap wajah", "category":"personalSocial", "status":"pass"},{"task":"Tersenyum spontan", "category":"personalSocial", "status":"pass"},{"task":"Membalas senyum", "category":"personalSocial", "status":"pass"},{"task":"Mencoba meraih mainan", "category":"personalSocial", "status":"pass"},{"task":"Makan biskuit sendiri", "category":"personalSocial", "status":"pass"},{"task":"Melambaikan tangan", "category":"personalSocial", "status":"borderline"}]`
+	denverJSON_Full := `[
+		{"task":"Menatap wajah", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":0, "shouldBeDoneAgeEndMonth":1},
+		{"task":"Tersenyum spontan", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":1, "shouldBeDoneAgeEndMonth":2},
+		{"task":"Membalas senyum", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":1, "shouldBeDoneAgeEndMonth":3},
+		{"task":"Mencoba meraih mainan", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":4, "shouldBeDoneAgeEndMonth":5},
+		{"task":"Makan biskuit sendiri", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":6, "shouldBeDoneAgeEndMonth":8},
+		{"task":"Melambaikan tangan", "category":"personalSocial", "status":"borderline", "shouldBeDoneAgeStartMonth":8, "shouldBeDoneAgeEndMonth":11}
+	]`
     nutrientJSON_Full := `[{"name":"Vitamin A", "schedule":"Feb & Agu", "consumptionHistory":{"2025":[0,1,0,0,0,0,0,1,0,0,0,0]}}, {"name":"Obat Cacing", "schedule":"Setiap 6 Bulan", "consumptionHistory":{"2025":[0,0,0,0,0,1,0,0,0,0,0,1]}}]`
     pmtJSON_Full := `[{"itemName":"Biskuit PMT", "quantity":2, "dateGiven":"2025-10-12T10:00:00Z"}]`
     
