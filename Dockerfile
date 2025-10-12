@@ -28,10 +28,10 @@ RUN go mod download
 
 # Copy source code and build binary
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /prima_be .
 
 # ============================================================
-# 🚀 STAGE 3: FINAL IMAGE (LIGHTWEIGHT)
+# 🚀 STAGE 3: FINAL IMAGE (LIGHTWEIGHT & SECURE)
 # ============================================================
 FROM debian:bookworm-slim
 
@@ -43,19 +43,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-
-WORKDIR /root
+# Gunakan direktori kerja yang standar, bukan /root
+WORKDIR /app
 
 # Copy compiled Go binary
-COPY --from=go-builder /app/main .
+COPY --from=go-builder /prima_be .
 
 # Copy Python dependencies & environment
 COPY --from=python-base /usr/local /usr/local
 
-# Copy project files
-COPY script/ /root/script/
-COPY model/ /root/model/
-RUN mkdir -p /root/processed_images
+# Copy project files ke dalam /app
+COPY script/ ./script/
+COPY model/ ./model/
+
+# Buat direktori untuk gambar hasil proses.
+# Ini adalah direktori yang akan digunakan oleh Go dan Python.
+RUN mkdir -p /app/processed_images
+RUN mkdir -p /app/uploads
+
+# (Opsional tapi direkomendasikan) Jalankan sebagai user non-root
+# RUN useradd -ms /bin/bash appuser
+# USER appuser
 
 EXPOSE 8080
-CMD ["./main"]
+
+# Jalankan binary dari /app
+CMD ["./prima_be"]
