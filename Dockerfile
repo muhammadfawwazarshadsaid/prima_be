@@ -1,6 +1,6 @@
 # Stage 1 - Build
-# Menggunakan base image Debian (Bullseye) yang kompatibel dengan PyTorch
-FROM golang:1.22-bullseye AS builder
+# Menggunakan base image Debian (Bookworm) dengan Go versi 1.25
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 
