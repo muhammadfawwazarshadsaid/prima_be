@@ -422,36 +422,101 @@ func createTables(db *sql.DB) {
 }
 
 func seedData(db *sql.DB) {
-	var count int; db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); if count > 0 { fmt.Println("Data dummy sudah ada, seeding dilewati."); return }
-	fmt.Println("Memulai proses seeding data dummy..."); tx, err := db.Begin(); if err != nil { log.Fatal("Gagal memulai transaksi: ", err) }
-	
-	var posyanduID int; err = tx.QueryRow(`INSERT INTO posyandu (name, address) VALUES ($1, $2) RETURNING id`, "Posyandu Sehat Ceria", "Jl. Mawar No. 12, Jawa Barat").Scan(&posyanduID); if err != nil { tx.Rollback(); log.Fatal(err) }
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost); _, err = tx.Exec(`INSERT INTO users (id, name, username, password_hash, account_type, posyandu_id) VALUES ($1, $2, $3, $4, $5, $6)`, "KDR001", "Anisa (Bidan)", "kader", string(hashedPassword), "kader", posyanduID); if err != nil { tx.Rollback(); log.Fatal(err) }
-	
-	_, err = tx.Exec(`INSERT INTO patients (id, full_name, date_of_birth, mother_name, mother_phone, patient_type) VALUES ('NS001', 'Naufal Sabitululum', '2025-05-01', 'Siti Rahma', '081234567890', 'child'), ('AK002', 'Adinda Kirana', '2025-01-10', 'Dewi Lestari', '089876543210', 'child'), ('BS003', 'Budi Santoso', '2024-08-05', 'Rina Wati', '081122334455', 'child'), ('SA004', 'Siti Aisyah', '1998-04-20', 'Siti Aisyah', '082233445566', 'pregnantWoman'), ('RS005', 'Riana Sari', '1997-07-15', 'Riana Sari', '083344556677', 'pregnantWoman'), ('DA008', 'Dewi Anggraini', '1996-11-12', 'Dewi Anggraini', '081298765432', 'pregnantWoman'), ('PA006', 'Putri Ayu', '2010-01-30', 'Lina Marlina', '085566778899', 'adolescentGirl'), ('SA007', 'Siti Aminah', '2009-05-22', 'Nur Hasanah', '087788990011', 'adolescentGirl');`); if err != nil { tx.Rollback(); log.Fatal(err) }
-	
-	whJSON1 := `[{"recordedAtAgeMonth": 3, "value": 6.0}, {"recordedAtAgeMonth": 4, "value": 6.7}, {"recordedAtAgeMonth": 5, "value": 7.2}]`
-	hhJSON1 := `[{"recordedAtAgeMonth": 3, "value": 61}, {"recordedAtAgeMonth": 4, "value": 64}, {"recordedAtAgeMonth": 5, "value": 66}]`
-	hbJSON1 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 9.8}], "conjunctivaResults": [], "averageHb": 9.8, "indication": "Anemia Berat", "confidenceLevel": 98.0, "nailBedIndication": "Anemia Berat"}`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, bbu_zscore, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('NS001', '5 Bulan', '2025-10-05', 7.2, 66, 11.2, -2.5, -3.1, $1, $2, $3);`, whJSON1, hhJSON1, hbJSON1); if err != nil { tx.Rollback(); log.Fatal(err) }
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	if count > 0 {
+		fmt.Println("Data dummy sudah ada, seeding dilewati.")
+		return
+	}
+	fmt.Println("Memulai proses seeding data dummy...")
+	tx, err := db.Begin()
+	if err != nil {
+		log.Fatal("Gagal memulai transaksi: ", err)
+	}
+
+	var posyanduID int
+	err = tx.QueryRow(`INSERT INTO posyandu (name, address) VALUES ($1, $2) RETURNING id`, "Posyandu Sehat Ceria", "Jl. Mawar No. 12, Jawa Barat").Scan(&posyanduID)
+	if err != nil {
+		tx.Rollback()
+		log.Fatal(err)
+	}
+
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost)
+	_, err = tx.Exec(`INSERT INTO users (id, name, username, password_hash, account_type, posyandu_id) VALUES ($1, $2, $3, $4, $5, $6)`, "KDR001", "Anisa (Bidan)", "kader", string(hashedPassword), "kader", posyanduID)
+	if err != nil {
+		tx.Rollback()
+		log.Fatal(err)
+	}
+
+	_, err = tx.Exec(`INSERT INTO patients (id, full_name, date_of_birth, mother_name, mother_phone, patient_type) VALUES 
+		('NS001', 'Naufal Sabitululum', '2025-05-01', 'Siti Rahma', '081234567890', 'child'), 
+		('AK002', 'Adinda Kirana', '2025-01-10', 'Dewi Lestari', '089876543210', 'child'), 
+		('BS003', 'Budi Santoso', '2024-08-05', 'Rina Wati', '081122334455', 'child'), 
+		('SA004', 'Siti Aisyah', '1998-04-20', 'Siti Aisyah', '082233445566', 'pregnantWoman'), 
+		('RS005', 'Riana Sari', '1997-07-15', 'Riana Sari', '083344556677', 'pregnantWoman'), 
+		('DA008', 'Dewi Anggraini', '1996-11-12', 'Dewi Anggraini', '081298765432', 'pregnantWoman'), 
+		('PA006', 'Putri Ayu', '2010-01-30', 'Lina Marlina', '085566778899', 'adolescentGirl'), 
+		('SA007', 'Siti Aminah', '2009-05-22', 'Nur Hasanah', '087788990011', 'adolescentGirl');
+	`)
+	if err != nil {
+		tx.Rollback()
+		log.Fatal("Gagal seed patients: ", err)
+	}
+
+	whJSON_NS001 := `[{"recordedAtAgeMonth": 3, "value": 6.0}, {"recordedAtAgeMonth": 4, "value": 6.7}, {"recordedAtAgeMonth": 5, "value": 7.2}]`
+	hhJSON_NS001 := `[{"recordedAtAgeMonth": 3, "value": 61}, {"recordedAtAgeMonth": 4, "value": 64}, {"recordedAtAgeMonth": 5, "value": 66}]`
+	hbJSON_NS001 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 9.8}], "conjunctivaResults": [], "averageHb": 9.8, "indication": "Anemia Berat", "confidenceLevel": 98.0, "nailBedIndication": "Anemia Berat"}`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, bbu_zscore, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('NS001', '5 Bulan', '2025-10-05', 7.2, 66, 11.2, -2.5, -3.1, $1, $2, $3);`, whJSON_NS001, hhJSON_NS001, hbJSON_NS001); if err != nil { tx.Rollback(); log.Fatal(err) }
 	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, hemoglobin_result) VALUES ('NS001', '4 Bulan', '2025-09-05', 6.7, 64, 11.0, '{"averageHb": 10.1, "indication": "Anemia Sedang"}'), ('NS001', '3 Bulan', '2025-08-05', 6.0, 61, 10.8, null);`); if err != nil { tx.Rollback(); log.Fatal(err) }
 
-	hbJSON2 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.92, "hbValue": 11.2}], "conjunctivaResults": [{"objectType": "conjunctiva", "confidence": 0.90, "hbValue": 11.4}], "averageHb": 11.3, "indication": "Normal", "confidenceLevel": 91.0}`
-	whJSON2 := `[{"recordedAtAgeMonth": 7, "value": 7.8}, {"recordedAtAgeMonth": 8, "value": 8.2}, {"recordedAtAgeMonth": 9, "value": 8.5}]`
-	hhJSON2 := `[{"recordedAtAgeMonth": 7, "value": 68}, {"recordedAtAgeMonth": 8, "value": 70}, {"recordedAtAgeMonth": 9, "value": 72}]`
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('AK002', '9 Bulan', '2025-10-11', 8.5, 72, 12.5, -1.8, $1, $2, $3);`, whJSON2, hhJSON2, hbJSON2); if err != nil { tx.Rollback(); log.Fatal(err) }
+	hbJSON_AK002 := `{"nailBedResults": [{"objectType": "nail", "confidence": 0.92, "hbValue": 11.2}], "conjunctivaResults": [{"objectType": "conjunctiva", "confidence": 0.90, "hbValue": 11.4}], "averageHb": 11.3, "indication": "Normal", "confidenceLevel": 91.0}`
+	whJSON_AK002 := `[{"recordedAtAgeMonth": 7, "value": 7.8}, {"recordedAtAgeMonth": 8, "value": 8.2}, {"recordedAtAgeMonth": 9, "value": 8.5}]`
+	hhJSON_AK002 := `[{"recordedAtAgeMonth": 7, "value": 68}, {"recordedAtAgeMonth": 8, "value": 70}, {"recordedAtAgeMonth": 9, "value": 72}]`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('AK002', '9 Bulan', '2025-10-11', 8.5, 72, 12.5, -1.8, $1, $2, $3);`, whJSON_AK002, hhJSON_AK002, hbJSON_AK002); if err != nil { tx.Rollback(); log.Fatal(err) }
 	
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, bbu_zscore, hemoglobin_result) VALUES ('BS003', '1.2 Tahun', '2025-10-11', 10.5, 80, 13.0, -0.2, -0.5, '{"averageHb": 11.5}');`); if err != nil { tx.Rollback(); log.Fatal(err) }
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, hemoglobin_result) VALUES ('SA004', '26 minggu', '2025-10-10', 55.8, 155, 21.4, false, true, 0.8, '{"averageHb": 9.6}');`); if err != nil { tx.Rollback(); log.Fatal(err) }
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, hemoglobin_result) VALUES ('RS005', '20 Minggu', '2025-10-01', 53.2, 160, 24.0, true, false, 1.2, '{"averageHb": 11.5}');`); if err != nil { tx.Rollback(); log.Fatal(err) }
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, hemoglobin_result) VALUES ('DA008', '30 Minggu', '2025-11-05', 61.5, 158, 25.5, true, false, 1.5, '{"averageHb": 12.5}');`); if err != nil { tx.Rollback(); log.Fatal(err) }
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, hemoglobin_result) VALUES ('PA006', '15 Tahun', '2025-08-30', 155, 40, 22.5, 16.6, false, '{"averageHb": 11.5}');`); if err != nil { tx.Rollback(); log.Fatal(err) }
-	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, hemoglobin_result) VALUES ('SA007', '16 Tahun', '2025-10-08', 162, 53, 24.0, 20.2, true, '{"averageHb": 12.2}');`); if err != nil { tx.Rollback(); log.Fatal(err) }
+	whJSON_BS003 := `[{"recordedAtAgeMonth": 12, "value": 9.8}, {"recordedAtAgeMonth": 13, "value": 10.2}, {"recordedAtAgeMonth": 14, "value": 10.5}]`
+	hhJSON_BS003 := `[{"recordedAtAgeMonth": 12, "value": 76}, {"recordedAtAgeMonth": 13, "value": 78}, {"recordedAtAgeMonth": 14, "value": 80}]`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, bbu_zscore, weight_history, height_history, hemoglobin_result) VALUES ('BS003', '1.2 Tahun', '2025-10-11', 10.5, 80, 13.0, -0.2, -0.5, $1, $2, '{"averageHb": 11.5}');`, whJSON_BS003, hhJSON_BS003); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+	whJSON_SA004 := `[{"recordedAtAgeMonth": 5, "value": 55}, {"recordedAtAgeMonth": 6, "value": 55.8}]`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('SA004', '26 minggu', '2025-10-10', 55.8, 155, 21.4, false, true, 0.8, $1, '{"averageHb": 9.6}');`, whJSON_SA004); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+	whJSON_RS005 := `[{"recordedAtAgeMonth": 3, "value": 51}, {"recordedAtAgeMonth": 4, "value": 52}, {"recordedAtAgeMonth": 5, "value": 53.2}]`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('RS005', '20 Minggu', '2025-10-01', 53.2, 160, 24.0, true, false, 1.2, $1, '{"averageHb": 11.5}');`, whJSON_RS005); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+	whJSON_DA008 := `[{"recordedAtAgeMonth": 5, "value": 58}, {"recordedAtAgeMonth": 6, "value": 60}, {"recordedAtAgeMonth": 7, "value": 61.5}]`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('DA008', '30 Minggu', '2025-11-05', 61.5, 158, 25.5, true, false, 1.5, $1, '{"averageHb": 12.5}');`, whJSON_DA008); if err != nil { tx.Rollback(); log.Fatal(err) }
 	
-	_, err = tx.Exec(`INSERT INTO pmt_items (icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description) VALUES ('food_bank_outlined', 'Recovery Supplementary Food', 'Given to malnourished children.', 15, 'child', 'Nutritious Biscuits', 'Nutrient-dense intake for children'), ('medication_liquid_outlined', 'Iron Folic Acid Tablets (TTD)', '≥90 tablets during pregnancy.', 120, 'pregnantWoman'), ('bakery_dining_outlined', 'Recovery PMT for Pregnant Women', 'Given to pregnant women with Chronic Energy Deficiency (KEK).', 10, 'pregnantWoman'), ('medication_outlined', 'Iron Folic Acid Tablets (TTD)', '1 tablet every week throughout the year.', 250, 'adolescentGirl');`); if err != nil { tx.Rollback(); log.Fatal("Gagal seed pmt items:", err) }
-	today := time.Now().Format("2006-01-02"); _, err = tx.Exec(`INSERT INTO attendance (patient_id, date, status) VALUES ('AK002', $1, 'Present'), ('SA007', '2025-10-08', 'Present'), ('RS005', $1, 'Present'), ('NS001', $1, 'Waiting'), ('BS003', $1, 'Waiting');`, today); if err != nil { tx.Rollback(); log.Fatal("Gagal seed attendance:", err) }
+	whJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 38}, {"recordedAtAgeMonth": 188, "value": 40}]`
+	hhJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 152}, {"recordedAtAgeMonth": 188, "value": 155}]`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('PA006', '15 Tahun', '2025-08-30', 155, 40, 22.5, 16.6, false, $1, $2, '{"averageHb": 11.5}');`, whJSON_PA006, hhJSON_PA006); if err != nil { tx.Rollback(); log.Fatal(err) }
 	
-	if err := tx.Commit(); err != nil { log.Fatal("Gagal commit transaksi seeding: ", err) }; fmt.Println("Seeding data dummy selesai.")
+	whJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 50}, {"recordedAtAgeMonth": 197, "value": 53}]`
+	hhJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 160}, {"recordedAtAgeMonth": 197, "value": 162}]`
+	_, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('SA007', '16 Tahun', '2025-10-08', 162, 53, 24.0, 20.2, true, $1, $2, '{"averageHb": 12.2}');`, whJSON_SA007, hhJSON_SA007); if err != nil { tx.Rollback(); log.Fatal(err) }
+
+	pmtItems := []PmtItem{
+		{IconName: "food_bank_outlined", Title: "Recovery Supplementary Food", Description: "Given to malnourished children.", StockCount: 15, TargetGroup: "child", SubItemTitle: "Nutritious Biscuits", SubItemDescription: "Nutrient-dense intake for children"},
+		{IconName: "medication_liquid_outlined", Title: "Iron Folic Acid Tablets (TTD)", Description: "≥90 tablets during pregnancy. ≥30 per month.", StockCount: 120, TargetGroup: "pregnantWoman", SubItemTitle: "Fe Tablets", SubItemDescription: "Prevention of anemia in pregnant women"},
+		{IconName: "bakery_dining_outlined", Title: "Recovery PMT for Pregnant Women", Description: "Given to pregnant women with Chronic Energy Deficiency (KEK).", StockCount: 10, TargetGroup: "pregnantWoman", SubItemTitle: "High-Calorie Biscuits", SubItemDescription: "Additional nutritional intake"},
+		{IconName: "medication_outlined", Title: "TTD for Adolescent Girls", Description: "1 tablet every week throughout the year.", StockCount: 250, TargetGroup: "adolescentGirl", SubItemTitle: "Adolescent Fe Tablets", SubItemDescription: "Weekly anemia prevention"},
+	}
+	for _, item := range pmtItems {
+		_, err = tx.Exec(`INSERT INTO pmt_items (icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description) VALUES ($1, $2, $3, $4, $5, $6, $7)`, item.IconName, item.Title, item.Description, item.StockCount, item.TargetGroup, item.SubItemTitle, item.SubItemDescription)
+		if err != nil { tx.Rollback(); log.Fatal("Gagal seed pmt items: ", err) }
+	}
+    
+	today := time.Now().Format("2006-01-02")
+	_, err = tx.Exec(`INSERT INTO attendance (patient_id, date, status) VALUES ('AK002', $1, 'Present'), ('SA007', '2025-10-08', 'Present'), ('RS005', $1, 'Present'), ('NS001', $1, 'Waiting'), ('BS003', $1, 'Waiting');`, today)
+	if err != nil {
+		tx.Rollback()
+		log.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Fatal("Gagal commit transaksi seeding: ", err)
+	}
+	fmt.Println("Seeding data dummy selesai.")
 }
 
 func main() {
