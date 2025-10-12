@@ -573,7 +573,6 @@ func seedData(db *sql.DB) {
         log.Fatal("Gagal memulai transaksi: ", err)
     }
 
-    // --- SETUP DASAR ---
     var posyanduID int
     err = tx.QueryRow(`INSERT INTO posyandu (name, address) VALUES ($1, $2) RETURNING id`, "Posyandu Sehat Ceria", "Jl. Mawar No. 12, Jawa Barat").Scan(&posyanduID)
     if err != nil { tx.Rollback(); log.Fatal(err) }
@@ -604,14 +603,14 @@ func seedData(db *sql.DB) {
     // --- DATA PEMERIKSAAN ---
 
     // -- Kategori: Anak --
-	denverJSON_Full := `[
-		{"task":"Menatap wajah", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":0, "shouldBeDoneAgeEndMonth":1},
-		{"task":"Tersenyum spontan", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":1, "shouldBeDoneAgeEndMonth":2},
-		{"task":"Membalas senyum", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":1, "shouldBeDoneAgeEndMonth":3},
-		{"task":"Mencoba meraih mainan", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":4, "shouldBeDoneAgeEndMonth":5},
-		{"task":"Makan biskuit sendiri", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":6, "shouldBeDoneAgeEndMonth":8},
-		{"task":"Melambaikan tangan", "category":"personalSocial", "status":"borderline", "shouldBeDoneAgeStartMonth":8, "shouldBeDoneAgeEndMonth":11}
-	]`
+    denverJSON_Full := `[
+        {"task":"Menatap wajah", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":0, "shouldBeDoneAgeEndMonth":1},
+        {"task":"Tersenyum spontan", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":1, "shouldBeDoneAgeEndMonth":2},
+        {"task":"Membalas senyum", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":1, "shouldBeDoneAgeEndMonth":3},
+        {"task":"Mencoba meraih mainan", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":4, "shouldBeDoneAgeEndMonth":5},
+        {"task":"Makan biskuit sendiri", "category":"personalSocial", "status":"pass", "shouldBeDoneAgeStartMonth":6, "shouldBeDoneAgeEndMonth":8},
+        {"task":"Melambaikan tangan", "category":"personalSocial", "status":"borderline", "shouldBeDoneAgeStartMonth":8, "shouldBeDoneAgeEndMonth":11}
+    ]`
     nutrientJSON_Full := `[{"name":"Vitamin A", "schedule":"Feb & Agu", "consumptionHistory":{"2025":[0,1,0,0,0,0,0,1,0,0,0,0]}}, {"name":"Obat Cacing", "schedule":"Setiap 6 Bulan", "consumptionHistory":{"2025":[0,0,0,0,0,1,0,0,0,0,0,1]}}]`
     pmtJSON_Full := `[{"itemName":"Biskuit PMT", "quantity":2, "dateGiven":"2025-10-12T10:00:00Z"}]`
     
@@ -636,49 +635,69 @@ func seedData(db *sql.DB) {
 
     // Fatimah Azzahra (FA009) - Aman
     hbJSON_FA009 := `{"averageHb": 12.0, "indication": "Normal", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 99.0}`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, bbu_zscore, hemoglobin_result) VALUES ('FA009', '9 Bulan', '2025-09-15', 8.8, 73, 13.5, 0.1, 0.3, $1);`, hbJSON_FA009); if err != nil { tx.Rollback(); log.Fatal(err) }
+    whJSON_FA009 := `[{"recordedAtAgeMonth": 7, "value": 8.0}, {"recordedAtAgeMonth": 8, "value": 8.4}, {"recordedAtAgeMonth": 9, "value": 8.8}]` 
+    hhJSON_FA009 := `[{"recordedAtAgeMonth": 7, "value": 69}, {"recordedAtAgeMonth": 8, "value": 71}, {"recordedAtAgeMonth": 9, "value": 73}]` 
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, tbu_zscore, bbu_zscore, hemoglobin_result, weight_history, height_history) VALUES ('FA009', '9 Bulan', '2025-09-15', 8.8, 73, 13.5, 0.1, 0.3, $1, $2, $3);`, hbJSON_FA009, whJSON_FA009, hhJSON_FA009); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
 
     // Rizky Pratama (RP010) - Risiko Sedang
     hbJSON_RP010 := `{"averageHb": 10.8, "indication": "Anemia Ringan", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 92.0}`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, bbu_zscore, tbu_zscore, hemoglobin_result, denver_milestones, nutrient_history) VALUES ('RP010', '8 Bulan', '2025-10-12', 7.5, 69, 12.0, -1.9, -2.1, $1, $2, $3);`, hbJSON_RP010, denverJSON_Full, nutrientJSON_Full); if err != nil { tx.Rollback(); log.Fatal(err) }
+    whJSON_RP010 := `[{"recordedAtAgeMonth": 6, "value": 7.0}, {"recordedAtAgeMonth": 7, "value": 7.2}, {"recordedAtAgeMonth": 8, "value": 7.5}]`
+    hhJSON_RP010 := `[{"recordedAtAgeMonth": 6, "value": 65}, {"recordedAtAgeMonth": 7, "value": 67}, {"recordedAtAgeMonth": 8, "value": 69}]` 
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, bbu_zscore, tbu_zscore, hemoglobin_result, denver_milestones, nutrient_history, weight_history, height_history) VALUES ('RP010', '8 Bulan', '2025-10-12', 7.5, 69, 12.0, -1.9, -2.1, $1, $2, $3, $4, $5);`, hbJSON_RP010, denverJSON_Full, nutrientJSON_Full, whJSON_RP010, hhJSON_RP010); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
 
     // -- Kategori: Ibu Hamil --
+    hhJSON_Static := `[{"recordedAtAgeMonth": 1, "value": 155}]` /
+
+    // Siti Aisyah (SA004)
     hbJSON_SA004 := `{"averageHb": 9.6, "indication": "Anemia Sedang", "nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 9.6}], "conjunctivaResults": [], "confidenceLevel": 95.0}`
     whJSON_SA004 := `[{"recordedAtAgeMonth": 5, "value": 55}, {"recordedAtAgeMonth": 6, "value": 55.8}]`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('SA004', '26 minggu', '2025-10-10', 55.8, 155, 21.4, false, true, 0.8, $1, $2);`, whJSON_SA004, hbJSON_SA004); if err != nil { tx.Rollback(); log.Fatal(err) }
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, height_history, hemoglobin_result) VALUES ('SA004', '26 minggu', '2025-10-10', 55.8, 155, 21.4, false, true, 0.8, $1, $2, $3);`, whJSON_SA004, hhJSON_Static, hbJSON_SA004); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
     
+    // Riana Sari (RS005)
     hbJSON_RS005 := `{"averageHb": 11.5, "indication": "Normal", "nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 11.5}], "conjunctivaResults": [], "confidenceLevel": 93.5}`
     whJSON_RS005 := `[{"recordedAtAgeMonth": 3, "value": 51}, {"recordedAtAgeMonth": 4, "value": 52}, {"recordedAtAgeMonth": 5, "value": 53.2}]`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('RS005', '20 Minggu', '2025-10-01', 53.2, 160, 24.0, true, false, 1.2, $1, $2);`, whJSON_RS005, hbJSON_RS005); if err != nil { tx.Rollback(); log.Fatal(err) }
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, height_history, hemoglobin_result) VALUES ('RS005', '20 Minggu', '2025-10-01', 53.2, 160, 24.0, true, false, 1.2, $1, $2, $3);`, whJSON_RS005, `[{"recordedAtAgeMonth": 1, "value": 160}]`, hbJSON_RS005); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
     
+    // Dewi Anggraini (DA008)
     hbJSON_DA008 := `{"averageHb": 12.5, "indication": "Normal", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 99.0}`
     whJSON_DA008 := `[{"recordedAtAgeMonth": 5, "value": 58}, {"recordedAtAgeMonth": 6, "value": 60}, {"recordedAtAgeMonth": 7, "value": 61.5}]`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, hemoglobin_result) VALUES ('DA008', '30 Minggu', '2025-10-05', 61.5, 158, 25.5, true, false, 1.5, $1, $2);`, whJSON_DA008, hbJSON_DA008); if err != nil { tx.Rollback(); log.Fatal(err) }
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, is_bb_stagnan, bb_gain_per_month, weight_history, height_history, hemoglobin_result) VALUES ('DA008', '30 Minggu', '2025-10-05', 61.5, 158, 25.5, true, false, 1.5, $1, $2, $3);`, whJSON_DA008, `[{"recordedAtAgeMonth": 1, "value": 158}]`, hbJSON_DA008); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
     
+    // Lestari Indah (LI011)
     hbJSON_LI011 := `{"averageHb": 11.1, "indication": "Normal", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 91.0}`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, bb_gain_per_month, hemoglobin_result) VALUES ('LI011', '24 Minggu', '2025-10-12', 58.0, 159, 23.4, false, 1.0, $1);`, hbJSON_LI011); if err != nil { tx.Rollback(); log.Fatal(err) }
+    whJSON_LI011 := `[{"recordedAtAgeMonth": 4, "value": 56}, {"recordedAtAgeMonth": 5, "value": 57}, {"recordedAtAgeMonth": 6, "value": 58.0}]` // <-- DATA DITAMBAHKAN
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, bb_gain_per_month, hemoglobin_result, weight_history, height_history) VALUES ('LI011', '24 Minggu', '2025-10-12', 58.0, 159, 23.4, false, 1.0, $1, $2, $3);`, hbJSON_LI011, whJSON_LI011, `[{"recordedAtAgeMonth": 1, "value": 159}]`); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
     
+    // Mega Wati (MW012)
     hbJSON_MW012 := `{"averageHb": 12.8, "indication": "Normal", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 98.0}`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, bb_gain_per_month, hemoglobin_result) VALUES ('MW012', '28 Minggu', '2025-09-28', 65.2, 162, 26.1, true, 1.8, $1);`, hbJSON_MW012); if err != nil { tx.Rollback(); log.Fatal(err) }
+    whJSON_MW012 := `[{"recordedAtAgeMonth": 5, "value": 62}, {"recordedAtAgeMonth": 6, "value": 63.5}, {"recordedAtAgeMonth": 7, "value": 65.2}]` // <-- DATA DITAMBAHKAN
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, bb, tb, lila, is_ttd_rutin, bb_gain_per_month, hemoglobin_result, weight_history, height_history) VALUES ('MW012', '28 Minggu', '2025-09-28', 65.2, 162, 26.1, true, 1.8, $1, $2, $3);`, hbJSON_MW012, whJSON_MW012, `[{"recordedAtAgeMonth": 1, "value": 162}]`); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
 
     // -- Kategori: Remaja Putri --
+    // Putri Ayu (PA006)
     hbJSON_PA006 := `{"averageHb": 11.5, "indication": "Anemia Ringan", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 99.0}`
     whJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 38}, {"recordedAtAgeMonth": 188, "value": 40}]`
     hhJSON_PA006 := `[{"recordedAtAgeMonth": 175, "value": 152}, {"recordedAtAgeMonth": 188, "value": 155}]`
     _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('PA006', '15.7 Tahun', '2025-08-30', 155, 40, 22.5, 16.6, false, $1, $2, $3);`, whJSON_PA006, hhJSON_PA006, hbJSON_PA006); if err != nil { tx.Rollback(); log.Fatal(err) }
     
+    // Siti Aminah (SA007)
     hbJSON_SA007 := `{"averageHb": 12.2, "indication": "Normal", "nailBedResults": [{"objectType": "nail", "confidence": 0.95, "hbValue": 12.2}], "conjunctivaResults": [], "confidenceLevel": 97.0}`
     whJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 50}, {"recordedAtAgeMonth": 197, "value": 53}]`
     hhJSON_SA007 := `[{"recordedAtAgeMonth": 180, "value": 160}, {"recordedAtAgeMonth": 197, "value": 162}]`
     _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, weight_history, height_history, hemoglobin_result) VALUES ('SA007', '16.4 Tahun', '2025-10-08', 162, 53, 24.0, 20.2, true, $1, $2, $3);`, whJSON_SA007, hhJSON_SA007, hbJSON_SA007); if err != nil { tx.Rollback(); log.Fatal(err) }
     
+    // Cindy Claudia (CC013)
     hbJSON_CC013 := `{"averageHb": 10.5, "indication": "Anemia Ringan", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 94.0}`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, hemoglobin_result) VALUES ('CC013', '17.1 Tahun', '2025-10-12', 158, 41, 21.8, 16.4, false, $1);`, hbJSON_CC013); if err != nil { tx.Rollback(); log.Fatal(err) }
+    whJSON_CC013 := `[{"recordedAtAgeMonth": 190, "value": 39}, {"recordedAtAgeMonth": 200, "value": 40}, {"recordedAtAgeMonth": 205, "value": 41}]` // <-- DATA DITAMBAHKAN
+    hhJSON_CC013 := `[{"recordedAtAgeMonth": 190, "value": 157}, {"recordedAtAgeMonth": 200, "value": 158}, {"recordedAtAgeMonth": 205, "value": 158}]` // <-- DATA DITAMBAHKAN
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, hemoglobin_result, weight_history, height_history) VALUES ('CC013', '17.1 Tahun', '2025-10-12', 158, 41, 21.8, 16.4, false, $1, $2, $3);`, hbJSON_CC013, whJSON_CC013, hhJSON_CC013); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
     
+    // Eka Yulianti (EY014)
     hbJSON_EY014 := `{"averageHb": 12.5, "indication": "Normal", "nailBedResults": [], "conjunctivaResults": [], "confidenceLevel": 99.0}`
-    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, hemoglobin_result) VALUES ('EY014', '16.6 Tahun', '2025-09-20', 160, 52, 25.0, 20.3, true, $1);`, hbJSON_EY014); if err != nil { tx.Rollback(); log.Fatal(err) }
+    whJSON_EY014 := `[{"recordedAtAgeMonth": 185, "value": 50}, {"recordedAtAgeMonth": 195, "value": 51.5}, {"recordedAtAgeMonth": 199, "value": 52}]` // <-- DATA DITAMBAHKAN
+    hhJSON_EY014 := `[{"recordedAtAgeMonth": 185, "value": 160}, {"recordedAtAgeMonth": 195, "value": 160}, {"recordedAtAgeMonth": 199, "value": 160}]` // <-- DATA DITAMBAHKAN
+    _, err = tx.Exec(`INSERT INTO examination_records (patient_id, age, examination_date, tb, bb, lila, imt, is_ttd_rutin, hemoglobin_result, weight_history, height_history) VALUES ('EY014', '16.6 Tahun', '2025-09-20', 160, 52, 25.0, 20.3, true, $1, $2, $3);`, hbJSON_EY014, whJSON_EY014, hhJSON_EY014); if err != nil { tx.Rollback(); log.Fatal(err) } // <-- QUERY DIUBAH
 
-    // --- DATA PMT ---
     pmtItems := []PmtItem{
         {IconName: "food_bank_outlined", Title: "Recovery Supplementary Food", Description: "Given to malnourished children.", StockCount: 15, TargetGroup: "child", SubItemTitle: "Nutritious Biscuits", SubItemDescription: "Nutrient-dense intake for children"},
         {IconName: "medication_liquid_outlined", Title: "Iron Folic Acid Tablets (TTD)", Description: "≥90 tablets during pregnancy. ≥30 per month.", StockCount: 120, TargetGroup: "pregnantWoman", SubItemTitle: "Fe Tablets", SubItemDescription: "Prevention of anemia in pregnant women"},
@@ -689,8 +708,6 @@ func seedData(db *sql.DB) {
         _, err = tx.Exec(`INSERT INTO pmt_items (icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description) VALUES ($1, $2, $3, $4, $5, $6, $7)`, item.IconName, item.Title, item.Description, item.StockCount, item.TargetGroup, item.SubItemTitle, item.SubItemDescription)
         if err != nil { tx.Rollback(); log.Fatal("Gagal seed pmt items: ", err) }
     }
-    
-    // --- DATA KEHADIRAN ---
     fixedToday := "2025-10-12" 
     attendanceQuery := `INSERT INTO attendance (patient_id, date, status) VALUES 
         ('AK002', $1, 'Present'), 
@@ -714,7 +731,6 @@ func seedData(db *sql.DB) {
     }
     fmt.Println("Seeding data dummy selesai.")
 }
-
 func resetDatabase(db *sql.DB) {
     fmt.Println("Menerima perintah reset, menghapus semua tabel...")
     _, err := db.Exec(`
