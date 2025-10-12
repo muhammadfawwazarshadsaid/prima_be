@@ -252,16 +252,23 @@ cmd := exec.Command("python3", "script/hb_processor.py", absPath)
 		serverURL = "http://54.206.54.157:8080" // Pastikan ini adalah alamat IP publik atau domain Anda
 	}
 
-	// Cek apakah kunci 'boundedBoxImagePath' ada di hasil dari Python
-	if relativePath, ok := result["boundedBoxImagePath"].(string); ok {
-		cleanPath, err := filepath.Rel(".", relativePath)
-		if err == nil {
-			// 1. Buat kunci BARU 'boundedBoxImageURL' dengan URL lengkap
-			result["boundedBoxImageURL"] = serverURL + "/" + filepath.ToSlash(cleanPath)
-
-			// 2. (Opsional tapi direkomendasikan) Hapus kunci lama agar tidak membingungkan
-			delete(result, "boundedBoxImagePath")
+	if absolutePath, ok := result["boundedBoxImagePath"].(string); ok {
+		var cleanPath string
+		// Path dari Python adalah absolut di dalam container (misal: /app/processed_images/...)
+		// Kita hanya perlu menghapus prefix '/app/' agar menjadi path relatif untuk URL.
+		// Ini lebih tangguh daripada menggunakan filepath.Rel(".")
+		if strings.HasPrefix(absolutePath, "/app/") {
+			cleanPath = strings.TrimPrefix(absolutePath, "/app/")
+		} else {
+			// Fallback jika path tidak seperti yang diharapkan, untuk jaga-jaga.
+			cleanPath = absolutePath
 		}
+		
+		// Buat kunci BARU 'boundedBoxImageURL' dengan URL lengkap
+		result["boundedBoxImageURL"] = serverURL + "/" + filepath.ToSlash(cleanPath)
+
+		// Hapus kunci lama agar tidak membingungkan
+		delete(result, "boundedBoxImagePath")
 	}
 	// =============================================================
 

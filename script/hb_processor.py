@@ -71,14 +71,15 @@ def main(source_image_path):
     nail_model.eval()
 
     # --- Jalankan Deteksi YOLO ---
-    yolo_results = yolo_model.predict(
+     yolo_results = yolo_model.predict(
         source=source_image_path,
-        save=True,      # Simpan gambar dengan bounding box
-        save_txt=True,    # Simpan file label .txt
+        save=True,
+        save_txt=True,
         project=output_dir,
         name="detection_result",
         exist_ok=True,
-        conf=0.3 # Tingkatkan confidence untuk hasil lebih akurat
+        conf=0.3,
+        verbose=False, 
     )
     
     # Dapatkan path dari hasil YOLO
