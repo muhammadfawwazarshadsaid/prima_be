@@ -226,6 +226,11 @@ cmd := exec.Command("python3", "script/hb_processor.py", absPath)
 
 	
 	outputStr := string(output)
+
+    // ================= TAMBAHKAN BARIS INI =================
+    log.Printf("Output mentah dari Python: %s", outputStr)
+    // =======================================================
+
 	jsonStartIndex := strings.Index(outputStr, "{")
 	if jsonStartIndex == -1 {
 		log.Printf("Tidak ada JSON object ditemukan di output Python.\nOutput asli: %s", outputStr)
