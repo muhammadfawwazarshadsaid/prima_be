@@ -14,7 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY script/requirements.txt /app/script/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/script/requirements.txt --break-system-packages
+RUN pip3 install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    -r /app/script/requirements.txt \
+    --break-system-packages
 
 # ====================================================================
 # Optimasi Cache: Install Dependensi Go
