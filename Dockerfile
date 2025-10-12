@@ -1,12 +1,17 @@
 # ===========================
 # 🏗️ Stage 1 - Build
 # ===========================
-FROM golang:1.25-rc-bullseye AS builder
+FROM golang:latest AS builder
 
 WORKDIR /app
 
 # Install Python dan pip
 RUN apt-get update && apt-get install -y python3 python3-pip libgl1 libglib2.0-0
+
+# Install Go 1.25.1 toolchain (just in case)
+RUN go install golang.org/dl/go1.25.1@latest && \
+    /root/go/bin/go1.25.1 download && \
+    export GOTOOLCHAIN=go1.25.1
 
 # Copy dependency files dan download Go dependencies
 COPY go.mod go.sum ./
