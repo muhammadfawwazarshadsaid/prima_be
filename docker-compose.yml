@@ -1,41 +1,40 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15
-    container_name: prima_db
-    restart: always
-    environment:
-      POSTGRES_USER: prima_db
-      POSTGRES_PASSWORD: prima_db
-      POSTGRES_DB: prima_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./postgres-data:/var/lib/postgresql/data
-    networks:
-      - prima_net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prima_db -d prima_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  db:
+    image: postgres:15
+    container_name: prima_db
+    restart: always
+    environment:
+      POSTGRES_USER: prima_db
+      POSTGRES_PASSWORD: prima_db
+      POSTGRES_DB: prima_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    networks:
+      - prima_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prima_db -d prima_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  app:
-    build: ./
-    container_name: prima_be
-    restart: always
-    # UBAH BLOK INI agar menunggu database sehat
-    depends_on:
-      db:
-        condition: service_healthy
-    env_file:
-      - ./.env
-    ports:
-      - "8080:8080"
-    networks:
-      - prima_net
+  app:
+    build: ./
+    container_name: prima_be
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    ports:
+      - "8080:8080"
+    networks:
+      - prima_net
 
 networks:
-  prima_net:
-    driver: bridge
+  prima_net:
+    driver: bridge
