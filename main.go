@@ -286,6 +286,16 @@ func (a *App) updateExaminationRecordHandler(w http.ResponseWriter, r *http.Requ
 	records := scanFullExaminationRecords(rows); if len(records) == 0 { respondWithError(w, http.StatusNotFound, "Updated record not found"); return }; respondWithJSON(w, http.StatusOK, records[0])
 }
 
+func (a *App) createExaminationRecordHandler(w http.ResponseWriter, r *http.Request) {
+	patientID := mux.Vars(r)["patientId"]; var payload struct { HemoglobinResult json.RawMessage `json:"hemoglobinResult"`; BB *float64 `json:"bb"`; TB *float64 `json:"tb"`; Lila *float64 `json:"lila"` }
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil { respondWithError(w, http.StatusBadRequest, "Invalid request payload"); return }
+	query := `WITH latest_record AS (SELECT id FROM examination_records WHERE patient_id = $5 ORDER BY examination_date DESC LIMIT 1) UPDATE examination_records SET hemoglobin_result = COALESCE($1, hemoglobin_result), bb = COALESCE($2, bb), tb = COALESCE($3, tb), lila = COALESCE($4, lila) WHERE id = (SELECT id FROM latest_record) RETURNING id;`
+	var updatedID string; err := a.DB.QueryRow(query, payload.HemoglobinResult, payload.BB, payload.TB, payload.Lila, patientID).Scan(&updatedID)
+	if err != nil { respondWithError(w, http.StatusInternalServerError, "Failed to update record: "+err.Error()); return }
+	rows, err := a.DB.Query(getFullExaminationRecordQuery("lr.id = $1", ""), updatedID); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
+	records := scanFullExaminationRecords(rows); if len(records) == 0 { respondWithError(w, http.StatusNotFound, "Updated record not found"); return }; respondWithJSON(w, http.StatusOK, records[0])
+}
+
 func (a *App) getPmtItemsHandler(w http.ResponseWriter, r *http.Request) {
     rows, err := a.DB.Query("SELECT id, icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description FROM pmt_items"); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
     items := []PmtItem{}; for rows.Next() { var item PmtItem; if err := rows.Scan(&item.ID, &item.IconName, &item.Title, &item.Description, &item.StockCount, &item.TargetGroup, &item.SubItemTitle, &item.SubItemDescription); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; items = append(items, item) }; respondWithJSON(w, http.StatusOK, items)
@@ -642,7 +652,7 @@ func (a *App) initializeRoutes() {
     a.Router.Use(loggingMiddleware); apiV1 := a.Router.PathPrefix("/api/v1").Subrouter(); apiV1.HandleFunc("/auth/login", a.loginHandler).Methods("POST"); authRoutes := apiV1.PathPrefix("").Subrouter(); authRoutes.Use(a.jwtAuthenticationMiddleware)
     authRoutes.HandleFunc("/dashboard", a.getDashboardDataHandler).Methods("GET"); authRoutes.HandleFunc("/patients/vulnerable", a.getVulnerablePatientsHandler).Methods("GET"); authRoutes.HandleFunc("/analysis/intervention", a.analysisHandler).Methods("POST")
     authRoutes.HandleFunc("/patients", a.createPatientHandler).Methods("POST"); authRoutes.HandleFunc("/patients", a.getAllPatientsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{id}", a.updatePatientHandler).Methods("PUT"); authRoutes.HandleFunc("/patients/{id}", a.deletePatientHandler).Methods("DELETE"); authRoutes.HandleFunc("/patients/{patientId}/details", a.getPatientDetailsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{patientId}/examinations/latest", a.getLatestExaminationForMonthHandler).Methods("GET")
-    authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")
+    authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{patientId}", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")
     authRoutes.HandleFunc("/pmt/items", a.getPmtItemsHandler).Methods("GET"); authRoutes.HandleFunc("/pmt/items", a.createPmtItemHandler).Methods("POST"); authRoutes.HandleFunc("/pmt/items/{id}", a.updatePmtItemHandler).Methods("PUT"); authRoutes.HandleFunc("/pmt/items/{id}", a.deletePmtItemHandler).Methods("DELETE")
 	authRoutes.HandleFunc("/pmt/items/{id}/stock", a.updatePmtStockHandler).Methods("PUT")
 	authRoutes.HandleFunc("/pmt/distribution", a.recordPmtDistributionHandler).Methods("POST")
