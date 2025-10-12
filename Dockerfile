@@ -1,32 +1,42 @@
-# Stage 1 - Build
-FROM golang:1.25-alpine AS builder
+# ===========================
+# 🏗️ Stage 1 - Build
+# ===========================
+FROM golang:1.25-bullseye AS builder
 
 WORKDIR /app
 
-# Install Python dan pip
-RUN apk add --no-cache python3 py3-pip
+# --- Install Python & pip ---
+RUN apt-get update && apt-get install -y python3 python3-pip
 
-# Copy dependency files dan download dependencies
+# --- Copy dependency files dan download Go dependencies ---
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy seluruh source code
+# --- Copy seluruh source code dan build binary Go ---
 COPY . .
-
-# Build binary Go
 RUN go build -o main .
 
-# Copy script dan requirements
+# --- Copy Python script dan install dependencies ---
 COPY script/ /app/script/
-RUN pip install --no-cache-dir -r /app/script/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/script/requirements.txt
 
-# Copy model
+# --- Copy model (jika ada model ML) ---
 COPY model/ /app/model/
 
-# Stage 2 - Runtime image ringan
-FROM alpine:latest
+
+# ===========================
+# 🚀 Stage 2 - Runtime Image
+# ===========================
+FROM debian:bullseye-slim
+
 WORKDIR /root/
+
+# --- Copy hasil build ---
 COPY --from=builder /app/main .
 COPY .env .
+COPY --from=builder /app/script /root/script
+COPY --from=builder /app/model /root/model
+
 EXPOSE 8080
+
 CMD ["./main"]
