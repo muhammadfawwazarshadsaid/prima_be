@@ -6,7 +6,13 @@ WORKDIR /app
 # ====================================================================
 # Optimasi Cache: Install Dependensi Python (yang paling lambat)
 # ====================================================================
-RUN apt-get update && apt-get install -y python3 python3-pip
+# ## PERBAIKAN DI SINI: Menambahkan libgl1-mesa-glx ##
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY script/requirements.txt /app/script/requirements.txt
 RUN pip3 install --no-cache-dir -r /app/script/requirements.txt --break-system-packages
 
