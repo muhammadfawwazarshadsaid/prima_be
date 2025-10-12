@@ -55,6 +55,7 @@ COPY --from=python-base /usr/local /usr/local
 # Copy project files
 COPY script/ /root/script/
 COPY model/ /root/model/
+RUN mkdir -p /root/processed_images
 
 EXPOSE 8080
 CMD ["./main"]
