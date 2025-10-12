@@ -629,6 +629,31 @@ func seedData(db *sql.DB) {
     }
     fmt.Println("Seeding data dummy selesai.")
 }
+
+func resetDatabase(db *sql.DB) {
+    fmt.Println("Menerima perintah reset, menghapus semua tabel...")
+    _, err := db.Exec(`
+        DROP TABLE IF EXISTS attendance;
+        DROP TABLE IF EXISTS pmt_items;
+        DROP TABLE IF EXISTS examination_records;
+        DROP TABLE IF EXISTS patients;
+        DROP TABLE IF EXISTS users;
+        DROP TABLE IF EXISTS posyandu;
+        DROP TYPE IF EXISTS account_type;
+        DROP TYPE IF EXISTS patient_type;
+        DROP TYPE IF EXISTS attendance_status;
+    `)
+    if err != nil {
+        log.Fatalf("Gagal melakukan reset database: %v", err)
+    }
+    fmt.Println("Semua tabel berhasil dihapus.")
+}
 func main() {
-    a := App{}; a.Initialize(); createTables(a.DB); seedData(a.DB); a.Run(":8080")
+    a := App{}; 
+	a.Initialize(); 
+	    if os.Getenv("FORCE_DB_RESET") == "true" {
+        resetDatabase(a.DB)
+    }
+	createTables(a.DB); seedData(a.DB); 
+	a.Run(":8080")
 }
