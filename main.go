@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -68,7 +69,12 @@ func (a *App) Initialize() {
 
 func (a *App) Run(addr string) {
 	log.Printf("Server berjalan di port %s", addr)
-	log.Fatal(http.ListenAndServe(addr, a.Router))
+	corsHandler := handlers.CORS(
+		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedOrigins([]string{"*"}),
+	)
+	log.Fatal(http.ListenAndServe(addr, corsHandler(a.Router)))
 }
 
 type Posyandu struct {
