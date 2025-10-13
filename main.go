@@ -436,11 +436,14 @@ func (a *App) updateExaminationRecordHandler(w http.ResponseWriter, r *http.Requ
 
 func (a *App) updateDenverMilestoneHandler(w http.ResponseWriter, r *http.Request) {
 	patientID := mux.Vars(r)["patientId"]
-
 	var payload struct {
-		Task   string `json:"task"`
-		Status string `json:"status"`
+		Task   					string `json:"task"`
+		Status 					string `json:"status"`
+		Category 				string `json:"category"`
+		StartMonth				int	   `json:"shouldBeDoneAgeStartMonth"`
+		EndMonth				int	   `json:"shouldBeDoneAgeEndMonth"`
 	}
+
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
 		return
@@ -449,9 +452,10 @@ func (a *App) updateDenverMilestoneHandler(w http.ResponseWriter, r *http.Reques
 		respondWithError(w, http.StatusBadRequest, "Task and status are required")
 		return
 	}
+
 	var latestRecordID string
 	var existingDenverJSON sql.NullString
-    
+
 	err := a.DB.QueryRow(`
 		SELECT id, denver_milestones 
 		FROM examination_records 
@@ -486,11 +490,15 @@ func (a *App) updateDenverMilestoneHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if !milestoneFound {
-		log.Printf("Peringatan: Task '%s' untuk pasien '%s' tidak ditemukan di JSON DB. Menambahkan task baru.", payload.Task, patientID)
+		log.Printf("Peringatan: Task '%s' untuk pasien '%s' tidak ditemukan di JSON DB. Menambahkan task baru dengan struktur lengkap.", payload.Task, patientID)
 		
 		newMilestone := map[string]interface{}{
-			"task":   payload.Task,
-			"status": payload.Status,
+			"task":                      payload.Task,
+			"status":                    payload.Status,
+			"category":                  "personalSocial",
+			"shouldBeDoneAgeStartMonth": 0,
+			"shouldBeDoneAgeEndMonth":   0, 
+			"doneAtAgeMonth":            nil,
 		}
 		milestones = append(milestones, newMilestone)
 	}
@@ -515,6 +523,7 @@ func (a *App) updateDenverMilestoneHandler(w http.ResponseWriter, r *http.Reques
 		"recordId": latestRecordID,
 	})
 }
+
 func (a *App) getPmtItemsHandler(w http.ResponseWriter, r *http.Request) {
     rows, err := a.DB.Query("SELECT id, icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description FROM pmt_items"); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
     items := []PmtItem{}; for rows.Next() { var item PmtItem; if err := rows.Scan(&item.ID, &item.IconName, &item.Title, &item.Description, &item.StockCount, &item.TargetGroup, &item.SubItemTitle, &item.SubItemDescription); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; items = append(items, item) }; respondWithJSON(w, http.StatusOK, items)
