@@ -222,7 +222,7 @@ func (a *App) diaryVideoAnalysisHandler(w http.ResponseWriter, r *http.Request) 
         geminiAPIKey = "AIzaSyD3mHRwrlXq18LPIBEbIPEHEZF5S_sz9c0"
     }
 
-    cmd := exec.Command("/opt/venv/bin/python3", "/app/script/hb_processor.py", arg1, arg2)
+	cmd := exec.Command("python3", "script/diary_analyzer.py", absPath, geminiAPIKey)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("Error eksekusi script diary_analyzer.py: %s\nOutput Script: %s", err, string(output))
