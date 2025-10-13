@@ -179,6 +179,81 @@ func (a *App) loginHandler(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{"token": tokenString, "user": user})
 }
 
+func (a *App) diaryVideoAnalysisHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(50 << 20); err != nil { 
+		respondWithError(w, http.StatusBadRequest, "Ukuran file video terlalu besar")
+		return
+	}
+
+	file, _, err := r.FormFile("video")
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Gagal membaca file 'video' dari form")
+		return
+	}
+	defer file.Close()
+
+	uploadDir := "./uploads"
+	os.MkdirAll(uploadDir, os.ModePerm)
+
+	tempFileName := fmt.Sprintf("%d-diary-video.mp4", time.Now().UnixNano())
+	tempFilePath := filepath.Join(uploadDir, tempFileName)
+	tempFile, err := os.Create(tempFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Tidak dapat membuat file sementara di server")
+		return
+	}
+	defer tempFile.Close()
+	defer os.Remove(tempFilePath) 
+
+	if _, err := io.Copy(tempFile, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Gagal menyimpan file yang di-upload")
+		return
+	}
+
+	absPath, err := filepath.Abs(tempFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Gagal mendapatkan path absolut file")
+		return
+	}
+	
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+    if geminiAPIKey == "" {
+        log.Println("PERINGATAN: GEMINI_API_KEY tidak diatur di environment. Menggunakan fallback key.")
+        geminiAPIKey = "AIzaSyD3mHRwrlXq18LPIBEbIPEHEZF5S_sz9c0"
+    }
+
+	cmd := exec.Command("python3", "script/diary_analyzer.py", absPath, geminiAPIKey)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Error eksekusi script diary_analyzer.py: %s\nOutput Script: %s", err, string(output))
+		respondWithError(w, http.StatusInternalServerError, "Proses AI untuk analisis diari gagal.")
+		return
+	}
+	
+	log.Printf("Output mentah dari diary_analyzer.py: %s", string(output))
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(output, &result); err != nil {
+		var errorResult map[string]string
+		if json.Unmarshal(output, &errorResult) == nil {
+			if errMsg, ok := errorResult["error"]; ok {
+				respondWithError(w, http.StatusInternalServerError, "AI Error: "+errMsg)
+				return
+			}
+		}
+		log.Printf("Gagal parsing JSON dari diary_analyzer.py: %s\nOutput asli: %s", err, string(output))
+		respondWithError(w, http.StatusInternalServerError, "Format hasil dari AI tidak valid")
+		return
+	}
+	
+	if errMsg, ok := result["error"].(string); ok {
+		respondWithError(w, http.StatusInternalServerError, "AI Error: "+errMsg)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, result)
+}
+
 func (a *App) hemoglobinPredictionHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil { 
 		respondWithError(w, http.StatusBadRequest, "Ukuran file terlalu besar")
@@ -895,6 +970,7 @@ func (a *App) initializeRoutes() {
 	apiV1 := a.Router.PathPrefix("/api/v1").Subrouter(); 
 	apiV1.HandleFunc("/auth/login", a.loginHandler).Methods("POST"); authRoutes := apiV1.PathPrefix("").Subrouter(); authRoutes.Use(a.jwtAuthenticationMiddleware)
 	authRoutes.HandleFunc("/examinations/predict-hb", a.hemoglobinPredictionHandler).Methods("POST")
+    authRoutes.HandleFunc("/diary/analyze-video", a.diaryVideoAnalysisHandler).Methods("POST")
     authRoutes.HandleFunc("/dashboard", a.getDashboardDataHandler).Methods("GET"); authRoutes.HandleFunc("/patients/vulnerable", a.getVulnerablePatientsHandler).Methods("GET"); authRoutes.HandleFunc("/analysis/intervention", a.analysisHandler).Methods("POST")
     authRoutes.HandleFunc("/patients", a.createPatientHandler).Methods("POST"); authRoutes.HandleFunc("/patients", a.getAllPatientsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{id}", a.updatePatientHandler).Methods("PUT"); authRoutes.HandleFunc("/patients/{id}", a.deletePatientHandler).Methods("DELETE"); authRoutes.HandleFunc("/patients/{patientId}/details", a.getPatientDetailsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{patientId}/examinations/latest", a.getLatestExaminationForMonthHandler).Methods("GET")
     authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")
