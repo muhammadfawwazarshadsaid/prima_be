@@ -36,8 +36,7 @@ RUN pip install --no-cache-dir \
 # Tujuan: Mengkompilasi aplikasi Go menjadi satu file binary statis
 # yang kecil dan efisien.
 # ===================================================================
-FROM golang:1.22-bookworm AS go-builder
-# Gunakan golang:1.22-bookworm, sesuaikan jika versi Anda berbeda
+FROM golang:1.25-bookworm AS go-builder # <-- PERBAIKAN: Versi Go sudah diperbarui ke 1.25
 
 WORKDIR /app
 
