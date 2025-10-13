@@ -926,11 +926,20 @@ func seedData(db *sql.DB) {
     _, err = tx.Exec(`INSERT INTO users (id, name, username, password_hash, account_type, posyandu_id) VALUES ($1, $2, $3, $4, $5, $6)`, "KDR001", "Anisa (Bidan)", "kader", string(hashedPassword), "kader", posyanduID)
     if err != nil { tx.Rollback(); log.Fatal(err) }
 
-    hashedPasswordPatient, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost)
+     hashedPasswordChild, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost)
     _, err = tx.Exec(`
         INSERT INTO users (id, name, username, password_hash, account_type, patient_type, posyandu_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        "SA004", "Siti Aisyah", "siti_aisyah", string(hashedPasswordPatient), "patient", "pregnantWoman", posyanduID)
+        "NS001", "Naufal (Anak)", "naufal", string(hashedPasswordChild), "patient", "child", posyanduID)
+    if err != nil {
+        tx.Rollback()
+        log.Fatal(err)
+    }
+    hashedPasswordPregnantMom, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost)
+    _, err = tx.Exec(`
+        INSERT INTO users (id, name, username, password_hash, account_type, patient_type, posyandu_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        "SA004", "Siti Aisyah", "siti_aisyah", string(hashedPasswordPregnantMom), "patient", "pregnantWoman", posyanduID)
     if err != nil {
         tx.Rollback()
         log.Fatal(err)
