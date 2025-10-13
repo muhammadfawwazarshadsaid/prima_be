@@ -926,6 +926,15 @@ func seedData(db *sql.DB) {
     _, err = tx.Exec(`INSERT INTO users (id, name, username, password_hash, account_type, posyandu_id) VALUES ($1, $2, $3, $4, $5, $6)`, "KDR001", "Anisa (Bidan)", "kader", string(hashedPassword), "kader", posyanduID)
     if err != nil { tx.Rollback(); log.Fatal(err) }
 
+    hashedPasswordPatient, _ := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost)
+    _, err = tx.Exec(`
+        INSERT INTO users (id, name, username, password_hash, account_type, patient_type, posyandu_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        "SA004", "Siti Aisyah", "siti_aisyah", string(hashedPasswordPatient), "patient", "pregnantWoman", posyanduID)
+    if err != nil {
+        tx.Rollback()
+        log.Fatal(err)
+    }
     // --- DATA PASIEN ---
     patientQuery := `INSERT INTO patients (id, full_name, date_of_birth, mother_name, mother_phone, patient_type) VALUES 
         ('NS001', 'Naufal Sabitululum', '2025-05-01', 'Siti Rahma', '081234567890', 'child'), 
