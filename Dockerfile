@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     ffmpeg \
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install (with torch CPU wheels)
