@@ -434,6 +434,72 @@ func (a *App) updateExaminationRecordHandler(w http.ResponseWriter, r *http.Requ
 	records := scanFullExaminationRecords(rows); if len(records) == 0 { respondWithError(w, http.StatusNotFound, "Updated record not found"); return }; respondWithJSON(w, http.StatusOK, records[0])
 }
 
+func (a *App) updateDenverMilestoneHandler(w http.ResponseWriter, r *http.Request) {
+	patientID := mux.Vars(r)["patientId"]
+
+	var payload struct {
+		Task   string `json:"task"`
+		Status string `json:"status"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	if payload.Task == "" || payload.Status == "" {
+		respondWithError(w, http.StatusBadRequest, "Task and status are required")
+		return
+	}
+
+	query := `
+		WITH latest_record_id AS (
+			-- Subquery untuk mendapatkan ID record pemeriksaan TERBARU untuk pasien ini
+			SELECT id
+			FROM examination_records
+			WHERE patient_id = $1
+			ORDER BY examination_date DESC
+			LIMIT 1
+		), milestone_to_update AS (
+			-- Subquery untuk mencari index (posisi) dari milestone yang akan diupdate
+			SELECT (ordinality - 1) AS idx
+			FROM examination_records,
+				 jsonb_array_elements(denver_milestones) WITH ORDINALITY arr(milestone, ordinality)
+			WHERE id = (SELECT id FROM latest_record_id) AND milestone->>'task' = $2
+		)
+		UPDATE examination_records
+		SET
+			-- Gunakan jsonb_set untuk memperbarui nilai 'status' pada index yang ditemukan
+			denver_milestones = jsonb_set(
+				denver_milestones,
+				-- Path: index array -> field 'status'
+				ARRAY[(SELECT idx FROM milestone_to_update)::text, 'status'],
+				-- Nilai baru
+				to_jsonb($3::text),
+				-- create_missing = false
+				false
+			)
+		WHERE id = (SELECT id FROM latest_record_id)
+		RETURNING id;
+	`
+
+	var updatedRecordID string
+	err := a.DB.QueryRow(query, patientID, payload.Task, payload.Status).Scan(&updatedRecordID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, fmt.Sprintf("Milestone with task '%s' not found in the latest record for patient '%s'", payload.Task, patientID))
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Failed to update denver milestone: "+err.Error())
+		return
+	}
+	
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"message":   "Denver milestone updated successfully",
+		"recordId":  updatedRecordID,
+	})
+}
+
 func (a *App) getPmtItemsHandler(w http.ResponseWriter, r *http.Request) {
     rows, err := a.DB.Query("SELECT id, icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description FROM pmt_items"); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
     items := []PmtItem{}; for rows.Next() { var item PmtItem; if err := rows.Scan(&item.ID, &item.IconName, &item.Title, &item.Description, &item.StockCount, &item.TargetGroup, &item.SubItemTitle, &item.SubItemDescription); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; items = append(items, item) }; respondWithJSON(w, http.StatusOK, items)
@@ -808,6 +874,8 @@ func (a *App) initializeRoutes() {
     authRoutes.HandleFunc("/dashboard", a.getDashboardDataHandler).Methods("GET"); authRoutes.HandleFunc("/patients/vulnerable", a.getVulnerablePatientsHandler).Methods("GET"); authRoutes.HandleFunc("/analysis/intervention", a.analysisHandler).Methods("POST")
     authRoutes.HandleFunc("/patients", a.createPatientHandler).Methods("POST"); authRoutes.HandleFunc("/patients", a.getAllPatientsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{id}", a.updatePatientHandler).Methods("PUT"); authRoutes.HandleFunc("/patients/{id}", a.deletePatientHandler).Methods("DELETE"); authRoutes.HandleFunc("/patients/{patientId}/details", a.getPatientDetailsHandler).Methods("GET"); authRoutes.HandleFunc("/patients/{patientId}/examinations/latest", a.getLatestExaminationForMonthHandler).Methods("GET")
     authRoutes.HandleFunc("/examinations", a.createExaminationRecordHandler).Methods("POST"); authRoutes.HandleFunc("/examinations/latest", a.getLatestHealthRecordsHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/history", a.getExaminationHistoryHandler).Methods("GET"); authRoutes.HandleFunc("/examinations/{patientId}", a.updateExaminationRecordHandler).Methods("PUT"); authRoutes.HandleFunc("/examinations/{id}", a.deleteExaminationRecordHandler).Methods("DELETE")
+    authRoutes.HandleFunc("/patients/{patientId}/denver", a.updateDenverMilestoneHandler).Methods("PUT")
+    
     authRoutes.HandleFunc("/pmt/items", a.getPmtItemsHandler).Methods("GET"); authRoutes.HandleFunc("/pmt/items", a.createPmtItemHandler).Methods("POST"); authRoutes.HandleFunc("/pmt/items/{id}", a.updatePmtItemHandler).Methods("PUT"); authRoutes.HandleFunc("/pmt/items/{id}", a.deletePmtItemHandler).Methods("DELETE")
 	authRoutes.HandleFunc("/pmt/items/{id}/stock", a.updatePmtStockHandler).Methods("PUT")
 	authRoutes.HandleFunc("/pmt/distribution", a.recordPmtDistributionHandler).Methods("POST")
