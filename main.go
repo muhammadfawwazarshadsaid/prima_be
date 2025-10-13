@@ -441,65 +441,80 @@ func (a *App) updateDenverMilestoneHandler(w http.ResponseWriter, r *http.Reques
 		Task   string `json:"task"`
 		Status string `json:"status"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
 		return
 	}
-
 	if payload.Task == "" || payload.Status == "" {
 		respondWithError(w, http.StatusBadRequest, "Task and status are required")
 		return
 	}
+	var latestRecordID string
+	var existingDenverJSON sql.NullString
+    
+	err := a.DB.QueryRow(`
+		SELECT id, denver_milestones 
+		FROM examination_records 
+		WHERE patient_id = $1 
+		ORDER BY examination_date DESC 
+		LIMIT 1`, patientID).Scan(&latestRecordID, &existingDenverJSON)
 
-	query := `
-		WITH latest_record_id AS (
-			-- Subquery untuk mendapatkan ID record pemeriksaan TERBARU untuk pasien ini
-			SELECT id
-			FROM examination_records
-			WHERE patient_id = $1
-			ORDER BY examination_date DESC
-			LIMIT 1
-		), milestone_to_update AS (
-			-- Subquery untuk mencari index (posisi) dari milestone yang akan diupdate
-			SELECT (ordinality - 1) AS idx
-			FROM examination_records,
-				 jsonb_array_elements(denver_milestones) WITH ORDINALITY arr(milestone, ordinality)
-			WHERE id = (SELECT id FROM latest_record_id) AND milestone->>'task' = $2
-		)
-		UPDATE examination_records
-		SET
-			-- Gunakan jsonb_set untuk memperbarui nilai 'status' pada index yang ditemukan
-			denver_milestones = jsonb_set(
-				denver_milestones,
-				-- Path: index array -> field 'status'
-				ARRAY[(SELECT idx FROM milestone_to_update)::text, 'status'],
-				-- Nilai baru
-				to_jsonb($3::text),
-				-- create_missing = false
-				false
-			)
-		WHERE id = (SELECT id FROM latest_record_id)
-		RETURNING id;
-	`
-
-	var updatedRecordID string
-	err := a.DB.QueryRow(query, patientID, payload.Task, payload.Status).Scan(&updatedRecordID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusNotFound, fmt.Sprintf("Milestone with task '%s' not found in the latest record for patient '%s'", payload.Task, patientID))
+			respondWithError(w, http.StatusNotFound, "No examination record found for this patient")
 			return
 		}
-		respondWithError(w, http.StatusInternalServerError, "Failed to update denver milestone: "+err.Error())
+		respondWithError(w, http.StatusInternalServerError, "Failed to fetch record: "+err.Error())
 		return
 	}
+
+	var milestones []map[string]interface{}
+	if existingDenverJSON.Valid && existingDenverJSON.String != "" {
+		if err := json.Unmarshal([]byte(existingDenverJSON.String), &milestones); err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to parse existing denver milestones: "+err.Error())
+			return
+		}
+	}
 	
+	milestoneFound := false
+	for i, m := range milestones {
+		if task, ok := m["task"].(string); ok && task == payload.Task {
+			milestones[i]["status"] = payload.Status
+			milestoneFound = true
+			break
+		}
+	}
+
+	if !milestoneFound {
+		log.Printf("Peringatan: Task '%s' untuk pasien '%s' tidak ditemukan di JSON DB. Menambahkan task baru.", payload.Task, patientID)
+		
+		newMilestone := map[string]interface{}{
+			"task":   payload.Task,
+			"status": payload.Status,
+		}
+		milestones = append(milestones, newMilestone)
+	}
+
+	updatedDenverJSON, err := json.Marshal(milestones)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to create updated denver JSON: "+err.Error())
+		return
+	}
+
+	_, err = a.DB.Exec(`
+		UPDATE examination_records 
+		SET denver_milestones = $1 
+		WHERE id = $2`, updatedDenverJSON, latestRecordID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to write updated denver milestones: "+err.Error())
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"message":   "Denver milestone updated successfully",
-		"recordId":  updatedRecordID,
+		"message":  "Denver milestone updated successfully",
+		"recordId": latestRecordID,
 	})
 }
-
 func (a *App) getPmtItemsHandler(w http.ResponseWriter, r *http.Request) {
     rows, err := a.DB.Query("SELECT id, icon_name, title, description, stock_count, target_group, sub_item_title, sub_item_description FROM pmt_items"); if err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; defer rows.Close()
     items := []PmtItem{}; for rows.Next() { var item PmtItem; if err := rows.Scan(&item.ID, &item.IconName, &item.Title, &item.Description, &item.StockCount, &item.TargetGroup, &item.SubItemTitle, &item.SubItemDescription); err != nil { respondWithError(w, http.StatusInternalServerError, err.Error()); return }; items = append(items, item) }; respondWithJSON(w, http.StatusOK, items)
