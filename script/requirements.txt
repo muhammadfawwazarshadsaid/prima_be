@@ -3,3 +3,5 @@ torch
 torchvision
 scikit-image
 ultralytics
+requests
+moviepy
